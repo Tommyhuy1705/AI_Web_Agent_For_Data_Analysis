@@ -10,7 +10,8 @@ import ChatInterface from "@/components/agent/ChatInterface";
 import DynamicChart from "@/components/visualizations/DynamicChart";
 import { useAgentStore } from "@/store/useAgentStore";
 import { useAgentStream } from "@/hooks/useAgentStream";
-import { Bell, Activity, TrendingUp } from "lucide-react";
+import { Bell, Activity, TrendingUp, LayoutDashboard } from "lucide-react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 export default function Home() {
@@ -48,6 +49,15 @@ export default function Home() {
               )}
             </button>
           </div>
+
+          {/* Dashboard Link */}
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-lg hover:bg-muted"
+          >
+            <LayoutDashboard className="w-3.5 h-3.5" />
+            Dashboard
+          </Link>
 
           {/* Status indicator */}
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">

@@ -27,6 +27,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from backend.api.routes.chat_router import router as chat_router
 from backend.api.routes.sql_proxy import router as sql_router
 from backend.api.routes.predict_router import router as predict_router
+from backend.api.routes.dashboard_router import router as dashboard_router
 from backend.services.db_executor import get_pool, close_pool
 from backend.services.alarm_monitor import (
     check_hourly_revenue_alarm,
@@ -129,6 +130,7 @@ app.add_middleware(
 app.include_router(chat_router)
 app.include_router(sql_router)
 app.include_router(predict_router)
+app.include_router(dashboard_router)
 
 
 # ============================================================
