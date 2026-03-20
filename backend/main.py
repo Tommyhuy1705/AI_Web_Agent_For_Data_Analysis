@@ -35,6 +35,7 @@ from backend.services.alarm_monitor import (
     set_alarm_event_queue,
 )
 from backend.services.dbt_runner import daily_dbt_run
+from backend.services.monthly_report import generate_monthly_report
 
 # ============================================================
 # Logging Configuration
@@ -94,8 +95,17 @@ async def lifespan(app: FastAPI):
         replace_existing=True,
     )
 
+    # Monthly strategy report - ngày 1 mỗi tháng lúc 01:00 UTC
+    scheduler.add_job(
+        generate_monthly_report,
+        trigger=CronTrigger(day=1, hour=1, minute=0),
+        id="monthly_strategy_report",
+        name="Monthly Strategy Report (1st of month)",
+        replace_existing=True,
+    )
+
     scheduler.start()
-    logger.info("APScheduler started - Hourly alarm check + Daily dbt run enabled")
+    logger.info("APScheduler started - Hourly alarm + Daily dbt + Monthly report enabled")
 
     yield
 
