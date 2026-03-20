@@ -36,8 +36,8 @@
 - [x] Setup interface hooks cho Voice/Audio (Phase 2 - chưa implement core logic)
 
 ## System Testing & Build
-- [ ] Test Backend FastAPI khởi động và kết nối Supabase thành công
-- [ ] Test luồng Streaming SSE từ Backend lên Frontend
-- [ ] Mock việc gọi Dify API để test sinh cấu hình JSON biểu đồ
-- [ ] Frontend build thành công không lỗi
-- [ ] Backend chạy không lỗi
+- [x] Test Backend FastAPI khởi động và kết nối Supabase thành công
+- [x] Test luồng Streaming SSE từ Backend lên Frontend
+- [x] Mock việc gọi Dify API để test sinh cấu hình JSON biểu đồ
+- [x] Frontend build thành công không lỗi
+- [x] Backend chạy không lỗi

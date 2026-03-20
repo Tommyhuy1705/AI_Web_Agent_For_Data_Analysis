@@ -207,7 +207,7 @@ class DifyService:
         self,
         user_id: str = "default_user",
         limit: int = 20,
-    ) -> List:
+    ) -> list:
         """Lấy danh sách conversations."""
         if not self.is_configured:
             return []

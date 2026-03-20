@@ -118,41 +118,8 @@ export function useAgentStream(): UseAgentStreamReturn {
         let insight = "";
         let sql = "";
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-
-          // Parse SSE events from buffer
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
-
-          let eventType = "";
-          let eventData = "";
-
-          for (const line of lines) {
-            if (line.startsWith("event: ")) {
-              eventType = line.slice(7).trim();
-            } else if (line.startsWith("data: ")) {
-              eventData = line.slice(6).trim();
-
-              if (eventType && eventData) {
-                try {
-                  const parsed = JSON.parse(eventData);
-                  await processSSEEvent(eventType, parsed);
-                } catch {
-                  // Non-JSON data, skip
-                }
-                eventType = "";
-                eventData = "";
-              }
-            }
-          }
-        }
-
         // Helper to process each SSE event
-        async function processSSEEvent(event: string, data: any) {
+        const processSSEEvent = (event: string, data: any) => {
           switch (event) {
             case "start":
               setStatusMessage("Bắt đầu xử lý...");
@@ -224,6 +191,39 @@ export function useAgentStream(): UseAgentStreamReturn {
             case "done":
               setStatusMessage("");
               break;
+          }
+        };
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+
+          // Parse SSE events from buffer
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          let eventType = "";
+          let eventData = "";
+
+          for (const line of lines) {
+            if (line.startsWith("event: ")) {
+              eventType = line.slice(7).trim();
+            } else if (line.startsWith("data: ")) {
+              eventData = line.slice(6).trim();
+
+              if (eventType && eventData) {
+                try {
+                  const parsed = JSON.parse(eventData);
+                  processSSEEvent(eventType, parsed);
+                } catch {
+                  // Non-JSON data, skip
+                }
+                eventType = "";
+                eventData = "";
+              }
+            }
           }
         }
       } catch (error: any) {
