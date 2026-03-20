@@ -47,7 +47,7 @@ async def execute_sql(request: SQLExecuteRequest):
     Flow:
     - Dify Agent sinh SQL -> Gửi SQL về endpoint này
     - Validate SQL (chỉ SELECT)
-    - Chạy trên Supabase qua asyncpg
+    - Chạy trên Supabase qua REST API (exec_sql RPC)
     - Trả về mảng JSON data
     """
     logger.info(f"SQL Proxy request: {request.sql[:100]}...")
@@ -98,55 +98,48 @@ async def sql_health():
 @router.get("/schemas")
 async def list_schemas():
     """Liệt kê các schema có trong database."""
-    try:
-        data = await execute_safe_query("""
-            SELECT schema_name
-            FROM information_schema.schemata
-            WHERE schema_name IN ('raw_staging', 'analytics_mart', 'system_metrics')
-            ORDER BY schema_name
-        """)
-        return {"schemas": [row["schema_name"] for row in data]}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return {"schemas": ["public"]}
+
+
+@router.get("/tables")
+async def list_tables():
+    """Liệt kê các bảng trong public schema."""
+    return {
+        "schema": "public",
+        "tables": [
+            {"table_name": "dim_products", "table_type": "BASE TABLE"},
+            {"table_name": "dim_customers", "table_type": "BASE TABLE"},
+            {"table_name": "fact_sales", "table_type": "BASE TABLE"},
+            {"table_name": "hourly_snapshot", "table_type": "BASE TABLE"},
+            {"table_name": "raw_sales", "table_type": "BASE TABLE"},
+            {"table_name": "v_daily_revenue", "table_type": "VIEW"},
+            {"table_name": "v_monthly_revenue", "table_type": "VIEW"},
+            {"table_name": "v_product_performance", "table_type": "VIEW"},
+            {"table_name": "v_customer_segment_revenue", "table_type": "VIEW"},
+        ]
+    }
 
 
 @router.get("/tables/{schema_name}")
-async def list_tables(schema_name: str):
+async def list_tables_by_schema(schema_name: str):
     """Liệt kê các bảng trong một schema."""
-    if schema_name not in ("raw_staging", "analytics_mart", "system_metrics"):
-        raise HTTPException(status_code=400, detail="Invalid schema name")
+    if schema_name != "public":
+        raise HTTPException(status_code=400, detail="Only public schema is available via REST API")
+    return await list_tables()
 
+
+@router.get("/columns/{table_name}")
+async def list_columns(table_name: str):
+    """Liệt kê các cột trong một bảng (public schema)."""
     try:
-        data = await execute_safe_query(
-            """
-            SELECT table_name, table_type
-            FROM information_schema.tables
-            WHERE table_schema = $1
-            ORDER BY table_name
-            """,
-            [schema_name]
-        )
-        return {"schema": schema_name, "tables": data}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/columns/{schema_name}/{table_name}")
-async def list_columns(schema_name: str, table_name: str):
-    """Liệt kê các cột trong một bảng."""
-    if schema_name not in ("raw_staging", "analytics_mart", "system_metrics"):
-        raise HTTPException(status_code=400, detail="Invalid schema name")
-
-    try:
-        data = await execute_safe_query(
-            """
-            SELECT column_name, data_type, is_nullable, column_default
-            FROM information_schema.columns
-            WHERE table_schema = $1 AND table_name = $2
-            ORDER BY ordinal_position
-            """,
-            [schema_name, table_name]
-        )
-        return {"schema": schema_name, "table": table_name, "columns": data}
+        data = await execute_safe_query(f"SELECT * FROM {table_name} LIMIT 0")
+        # If empty, get column names from a single row
+        if not data:
+            data = await execute_safe_query(f"SELECT * FROM {table_name} LIMIT 1")
+        if data:
+            columns = [{"column_name": k, "data_type": type(v).__name__} for k, v in data[0].items()]
+        else:
+            columns = []
+        return {"schema": "public", "table": table_name, "columns": columns}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

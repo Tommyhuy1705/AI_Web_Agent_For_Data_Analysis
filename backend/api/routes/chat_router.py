@@ -19,7 +19,7 @@ import uuid
 from typing import Any, AsyncGenerator, Dict, Optional
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -34,21 +34,6 @@ router = APIRouter(prefix="/api/chat", tags=["Chat"])
 DIFY_API_URL = os.getenv("DIFY_API_URL", "https://api.dify.ai/v1")
 DIFY_API_KEY = os.getenv("DIFY_API_KEY", "")
 DIFY_APP_TYPE = os.getenv("DIFY_APP_TYPE", "chat")  # chat or workflow
-
-SCHEMA_FALLBACK_SUMMARY = """Read-only analytics schema (fallback when vector context is unavailable):
-- analytics_mart.fact_sales(order_date, product_id, customer_id, quantity, unit_price, total_amount, discount, channel, payment_method)
-- analytics_mart.dim_products(product_id, product_name, category, sub_category, brand, unit_price)
-- analytics_mart.dim_customers(customer_id, customer_name, email, segment, region, city, country)
-- analytics_mart.v_daily_revenue(order_date, total_orders, total_quantity, total_revenue, avg_order_value)
-- analytics_mart.v_monthly_revenue(month, total_orders, total_revenue, avg_order_value)
-"""
-
-READ_ONLY_GUARDRAIL = """You are a read-only data analytics assistant.
-Never generate or suggest SQL that writes/modifies/deletes schema or data.
-Refuse any request involving INSERT, UPDATE, DELETE, DROP, ALTER, CREATE, TRUNCATE, GRANT, REVOKE.
-If user asks destructive/admin action, return only:
-SELECT 'Read-only policy: destructive or mutating actions are not allowed' AS message
-"""
 
 
 class ChatRequest(BaseModel):
@@ -71,10 +56,6 @@ async def _stream_sse_event(event: str, data: Any) -> str:
     return f"event: {event}\ndata: {serialized}\n\n"
 
 
-def _friendly_ai_overload_message() -> str:
-    return "He thong AI dang qua tai, vui long thu lai sau vai giay."
-
-
 async def _process_with_dify(
     message: str,
     conversation_id: Optional[str],
@@ -88,9 +69,10 @@ async def _process_with_dify(
     3. Gọi lại /api/sql/execute
     4. Trả về kết quả
     """
-    if not DIFY_API_KEY:
-        # Fallback: Xử lý trực tiếp không qua Dify
-        yield await _stream_sse_event("status", {"message": "Processing without Dify (API key not configured)..."})
+    # Dify API key starting with 'dataset-' is for Knowledge API, not App API
+    # We need an 'app-' key for chat. Fallback to direct processing.
+    if not DIFY_API_KEY or DIFY_API_KEY.startswith("dataset-"):
+        yield await _stream_sse_event("status", {"message": "Processing with AI Agent (OpenAI direct)..."})
         async for event in _process_direct(message, user_id):
             yield event
         return
@@ -99,15 +81,11 @@ async def _process_with_dify(
         yield await _stream_sse_event("status", {"message": "Đang gửi câu hỏi tới AI Agent..."})
 
         async with httpx.AsyncClient(timeout=120) as client:
-            async with client.stream(
-                "POST",
+            response = await client.post(
                 f"{DIFY_API_URL}/chat-messages",
                 json={
-                    "inputs": {
-                        "schema_fallback": SCHEMA_FALLBACK_SUMMARY,
-                        "read_only_policy": READ_ONLY_GUARDRAIL,
-                    },
-                    "query": f"{READ_ONLY_GUARDRAIL}\n\nUser question: {message}",
+                    "inputs": {},
+                    "query": message,
                     "response_mode": "streaming",
                     "conversation_id": conversation_id or "",
                     "user": user_id,
@@ -116,57 +94,52 @@ async def _process_with_dify(
                     "Authorization": f"Bearer {DIFY_API_KEY}",
                     "Content-Type": "application/json",
                 },
-            ) as response:
-                if response.status_code != 200:
-                    error_message = (
-                        _friendly_ai_overload_message()
-                        if response.status_code in (429, 502, 503, 504)
-                        else f"Dify API error: {response.status_code}"
-                    )
-                    yield await _stream_sse_event("error", {"message": error_message})
-                    return
+            )
 
-                full_answer = ""
-                async for line in response.aiter_lines():
-                    if line.startswith("data: "):
-                        try:
-                            data = json.loads(line[6:])
-                            event_type = data.get("event", "")
+            if response.status_code != 200:
+                yield await _stream_sse_event("error", {
+                    "message": f"Dify API error: {response.status_code}"
+                })
+                return
 
-                            if event_type == "message":
-                                chunk = data.get("answer", "")
-                                full_answer += chunk
-                                yield await _stream_sse_event("message_chunk", {
-                                    "chunk": chunk,
-                                    "conversation_id": data.get("conversation_id", ""),
-                                })
+            # Stream Dify response
+            full_answer = ""
+            async for line in response.aiter_lines():
+                if line.startswith("data: "):
+                    try:
+                        data = json.loads(line[6:])
+                        event_type = data.get("event", "")
 
-                            elif event_type == "message_end":
-                                yield await _stream_sse_event("message_complete", {
-                                    "full_answer": full_answer,
-                                    "conversation_id": data.get("conversation_id", ""),
-                                    "metadata": data.get("metadata", {}),
-                                })
+                        if event_type == "message":
+                            chunk = data.get("answer", "")
+                            full_answer += chunk
+                            yield await _stream_sse_event("message_chunk", {
+                                "chunk": chunk,
+                                "conversation_id": data.get("conversation_id", ""),
+                            })
 
-                            elif event_type == "agent_thought":
-                                yield await _stream_sse_event("agent_thought", {
-                                    "thought": data.get("thought", ""),
-                                    "tool": data.get("tool", ""),
-                                    "tool_input": data.get("tool_input", ""),
-                                })
+                        elif event_type == "message_end":
+                            yield await _stream_sse_event("message_complete", {
+                                "full_answer": full_answer,
+                                "conversation_id": data.get("conversation_id", ""),
+                                "metadata": data.get("metadata", {}),
+                            })
 
-                        except json.JSONDecodeError:
-                            continue
+                        elif event_type == "agent_thought":
+                            yield await _stream_sse_event("agent_thought", {
+                                "thought": data.get("thought", ""),
+                                "tool": data.get("tool", ""),
+                                "tool_input": data.get("tool_input", ""),
+                            })
+
+                    except json.JSONDecodeError:
+                        continue
 
     except httpx.TimeoutException:
-        yield await _stream_sse_event("error", {"message": _friendly_ai_overload_message()})
+        yield await _stream_sse_event("error", {"message": "Dify API timeout"})
     except Exception as e:
         logger.error(f"Dify API error: {e}")
-        error_text = str(e).lower()
-        if "timeout" in error_text or "rate" in error_text or "429" in error_text:
-            yield await _stream_sse_event("error", {"message": _friendly_ai_overload_message()})
-        else:
-            yield await _stream_sse_event("error", {"message": str(e)})
+        yield await _stream_sse_event("error", {"message": str(e)})
 
 
 async def _process_direct(
@@ -190,20 +163,22 @@ async def _process_direct(
             messages=[
                 {
                     "role": "system",
-                    "content": f"""{READ_ONLY_GUARDRAIL}
+                    "content": """You are a SQL expert for a sales analytics database on PostgreSQL (Supabase).
+Available tables in public schema:
+- fact_sales (sale_id, order_date, product_id, customer_id, quantity, unit_price, total_amount, discount, channel, payment_method)
+- dim_products (product_id, product_name, category, sub_category, brand, unit_price)
+- dim_customers (customer_id, customer_name, email, segment, region, city, country)
+- v_daily_revenue (order_date, total_orders, total_quantity, total_revenue, avg_order_value)
+- v_monthly_revenue (month, total_orders, total_revenue, avg_order_value)
+- v_product_performance (product_id, product_name, category, total_orders, total_quantity, total_revenue)
+- v_customer_segment_revenue (segment, region, total_customers, total_orders, total_revenue)
 
-You are a SQL expert for a sales analytics database on PostgreSQL (Supabase).
-Available schemas and tables:
-- analytics_mart.fact_sales (sale_id, order_date, product_id, customer_id, quantity, unit_price, total_amount, discount, channel, payment_method)
-- analytics_mart.dim_products (product_id, product_name, category, sub_category, brand, unit_price)
-- analytics_mart.dim_customers (customer_id, customer_name, email, segment, region, city, country)
-- analytics_mart.v_daily_revenue (order_date, total_orders, total_quantity, total_revenue, avg_order_value)
-- analytics_mart.v_monthly_revenue (month, total_orders, total_revenue, avg_order_value)
-- analytics_mart.v_product_performance (product_id, product_name, category, total_orders, total_quantity, total_revenue)
-- analytics_mart.v_customer_segment_revenue (segment, region, total_customers, total_orders, total_revenue)
-
-Generate ONLY a SELECT SQL query. Return ONLY the SQL, no explanation.
-If the question is not about data, return: SELECT 'I can only answer data-related questions' as message"""
+IMPORTANT RULES:
+1. Do NOT use schema prefix (no analytics_mart. or public.). Just use table names directly.
+2. Generate ONLY a SELECT SQL query.
+3. Return ONLY the SQL, no explanation, no markdown code blocks.
+4. Use proper PostgreSQL syntax.
+5. If the question is not about data, return: SELECT 'I can only answer data-related questions' as message"""
                 },
                 {"role": "user", "content": message}
             ],
@@ -248,15 +223,9 @@ If the question is not about data, return: SELECT 'I can only answer data-relate
 
     except ValueError as e:
         yield await _stream_sse_event("error", {"message": f"SQL Error: {str(e)}"})
-    except httpx.TimeoutException:
-        yield await _stream_sse_event("error", {"message": _friendly_ai_overload_message()})
     except Exception as e:
         logger.error(f"Direct processing error: {e}", exc_info=True)
-        error_text = str(e).lower()
-        if "timeout" in error_text or "rate" in error_text or "429" in error_text:
-            yield await _stream_sse_event("error", {"message": _friendly_ai_overload_message()})
-        else:
-            yield await _stream_sse_event("error", {"message": f"Error: {str(e)}"})
+        yield await _stream_sse_event("error", {"message": f"Error: {str(e)}"})
 
 
 @router.post("/stream")
@@ -311,12 +280,10 @@ async def chat_query(request: ChatRequest):
             messages=[
                 {
                     "role": "system",
-                    "content": f"""{READ_ONLY_GUARDRAIL}
-
-You are a SQL expert. Generate SELECT SQL for PostgreSQL.
-Available tables: analytics_mart.fact_sales, analytics_mart.dim_products, analytics_mart.dim_customers,
-analytics_mart.v_daily_revenue, analytics_mart.v_monthly_revenue, analytics_mart.v_product_performance.
-Return ONLY SQL."""
+                    "content": """You are a SQL expert. Generate SELECT SQL for PostgreSQL.
+Available tables (public schema, NO schema prefix):
+- fact_sales, dim_products, dim_customers, v_daily_revenue, v_monthly_revenue, v_product_performance, v_customer_segment_revenue.
+Return ONLY SQL, no markdown."""
                 },
                 {"role": "user", "content": request.message}
             ],

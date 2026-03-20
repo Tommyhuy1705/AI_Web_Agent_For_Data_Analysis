@@ -4,7 +4,7 @@ Logic so sánh snapshot 1h cho tính năng Proactive Alarm.
 Chạy mỗi 60 phút qua APScheduler.
 
 Flow:
-1. Query tổng doanh thu giờ vừa qua trong analytics_mart
+1. Query tổng doanh thu giờ vừa qua từ fact_sales (public schema)
 2. So sánh với value trong hourly_snapshot
 3. Nếu giảm > 15%: UPSERT value mới -> Gọi webhook Dify -> SendGrid email -> SSE thông báo
 """
@@ -19,8 +19,8 @@ import httpx
 
 from backend.services.db_executor import (
     execute_safe_query,
-    execute_write_query,
     fetch_one,
+    upsert_via_rest,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,9 +28,10 @@ logger = logging.getLogger(__name__)
 # Configuration
 ALARM_THRESHOLD_PCT = 15.0  # Ngưỡng cảnh báo: giảm > 15%
 DIFY_WEBHOOK_URL = os.getenv("DIFY_WEBHOOK_URL", "")
+DIFY_API_KEY = os.getenv("DIFY_API_KEY", "")
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY", "")
 SENDGRID_FROM_EMAIL = os.getenv("SENDGRID_FROM_EMAIL", "noreply@omni-revenue.com")
-ALERT_RECIPIENTS = os.getenv("ALERT_RECIPIENTS", "admin@company.com").split(",")
+ALERT_RECIPIENTS = [e.strip() for e in os.getenv("ALERT_RECIPIENTS", "admin@company.com").split(",")]
 
 # SSE event queue (sẽ được inject từ main.py)
 _alarm_event_queue = None
@@ -88,23 +89,22 @@ async def check_hourly_revenue_alarm():
 
 
 async def _get_current_hour_revenue() -> Optional[float]:
-    """Query tổng doanh thu trong giờ vừa qua từ analytics_mart."""
+    """Query tổng doanh thu trong ngày hôm nay từ fact_sales (public schema)."""
     try:
         result = await fetch_one("""
             SELECT COALESCE(SUM(total_amount), 0) as total_revenue
-            FROM analytics_mart.fact_sales
-            WHERE order_date >= CURRENT_DATE
-            AND created_at >= NOW() - INTERVAL '1 hour'
+            FROM fact_sales
+            WHERE order_date = CURRENT_DATE
         """)
         return float(result["total_revenue"]) if result else None
     except Exception as e:
         logger.error(f"Error querying current revenue: {e}")
-        # Fallback: lấy doanh thu ngày hôm nay
+        # Fallback: lấy doanh thu gần nhất
         try:
             result = await fetch_one("""
                 SELECT COALESCE(SUM(total_amount), 0) as total_revenue
-                FROM analytics_mart.fact_sales
-                WHERE order_date = CURRENT_DATE
+                FROM fact_sales
+                WHERE order_date >= CURRENT_DATE - INTERVAL '7 days'
             """)
             return float(result["total_revenue"]) if result else 0
         except Exception:
@@ -112,16 +112,13 @@ async def _get_current_hour_revenue() -> Optional[float]:
 
 
 async def _get_previous_snapshot(metric_name: str) -> Optional[Dict[str, Any]]:
-    """Lấy giá trị snapshot trước đó."""
+    """Lấy giá trị snapshot trước đó từ hourly_snapshot (public schema)."""
     try:
-        result = await fetch_one(
-            """
+        result = await fetch_one(f"""
             SELECT metric_name, value, previous_value, change_pct, last_updated
-            FROM system_metrics.hourly_snapshot
-            WHERE metric_name = $1
-            """,
-            [metric_name]
-        )
+            FROM hourly_snapshot
+            WHERE metric_name = '{metric_name}'
+        """)
         return result
     except Exception as e:
         logger.error(f"Error fetching snapshot: {e}")
@@ -134,20 +131,18 @@ async def _upsert_snapshot(
     previous_value: float,
     change_pct: float
 ):
-    """UPSERT giá trị mới vào hourly_snapshot."""
+    """UPSERT giá trị mới vào hourly_snapshot (public schema via REST API)."""
     try:
-        await execute_write_query(
-            """
-            INSERT INTO system_metrics.hourly_snapshot (metric_name, value, previous_value, change_pct, last_updated)
-            VALUES ($1, $2, $3, $4, NOW())
-            ON CONFLICT (metric_name)
-            DO UPDATE SET
-                value = EXCLUDED.value,
-                previous_value = EXCLUDED.previous_value,
-                change_pct = EXCLUDED.change_pct,
-                last_updated = NOW()
-            """,
-            [metric_name, current_value, previous_value, change_pct]
+        await upsert_via_rest(
+            table="hourly_snapshot",
+            data={
+                "metric_name": metric_name,
+                "value": current_value,
+                "previous_value": previous_value,
+                "change_pct": round(change_pct, 4),
+                "last_updated": datetime.utcnow().isoformat(),
+            },
+            schema="public",
         )
         logger.info(f"Snapshot updated: {metric_name} = {current_value}")
     except Exception as e:
@@ -172,7 +167,7 @@ async def _trigger_alarm(
         "previous_revenue": previous_revenue,
         "change_pct": round(change_pct, 2),
         "timestamp": datetime.utcnow().isoformat(),
-        "message": f"⚠️ Cảnh báo: Doanh thu giảm {abs(change_pct):.1f}% so với giờ trước "
+        "message": f"Cảnh báo: Doanh thu giảm {abs(change_pct):.1f}% so với giờ trước "
                    f"(Hiện tại: {current_revenue:,.0f} VNĐ, Trước đó: {previous_revenue:,.0f} VNĐ)"
     }
 
@@ -192,8 +187,8 @@ async def _trigger_alarm(
 
 async def _call_dify_alarm_webhook(alarm_data: Dict[str, Any]) -> Optional[str]:
     """Gọi Dify webhook để sinh câu cảnh báo tự nhiên."""
-    if not DIFY_WEBHOOK_URL:
-        logger.info("Dify webhook URL not configured, skipping")
+    if not DIFY_WEBHOOK_URL or not DIFY_API_KEY:
+        logger.info("Dify webhook not configured, skipping")
         return None
 
     try:
@@ -210,7 +205,10 @@ async def _call_dify_alarm_webhook(alarm_data: Dict[str, Any]) -> Optional[str]:
                     "response_mode": "blocking",
                     "user": "alarm_system",
                 },
-                headers={"Content-Type": "application/json"},
+                headers={
+                    "Authorization": f"Bearer {DIFY_API_KEY}",
+                    "Content-Type": "application/json",
+                },
             )
             if response.status_code == 200:
                 result = response.json()

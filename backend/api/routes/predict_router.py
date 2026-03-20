@@ -45,7 +45,7 @@ async def predict_revenue_endpoint(request: PredictRequest):
     Dự đoán doanh thu tương lai.
 
     Flow:
-    1. Query dữ liệu time series từ analytics_mart
+    1. Query dữ liệu time series từ fact_sales (public schema)
     2. Train mô hình in-memory
     3. Trả ra con số dự đoán
     4. (Optional) Sinh insight chiến lược
@@ -53,25 +53,12 @@ async def predict_revenue_endpoint(request: PredictRequest):
     logger.info(f"Predict request: {request.periods} {request.period_type}s")
 
     try:
-        # Step 1: Query historical data
+        # Step 1: Query historical data from views (public schema)
         if request.period_type == "quarter":
-            query = """
-                SELECT
-                    DATE_TRUNC('quarter', order_date)::DATE as date,
-                    SUM(total_amount) as revenue
-                FROM analytics_mart.fact_sales
-                GROUP BY DATE_TRUNC('quarter', order_date)
-                ORDER BY date
-            """
+            # Use monthly data and aggregate to quarters in Python
+            query = "SELECT month as date, total_revenue as revenue FROM v_monthly_revenue ORDER BY month"
         else:
-            query = """
-                SELECT
-                    DATE_TRUNC('month', order_date)::DATE as date,
-                    SUM(total_amount) as revenue
-                FROM analytics_mart.fact_sales
-                GROUP BY DATE_TRUNC('month', order_date)
-                ORDER BY date
-            """
+            query = "SELECT month as date, total_revenue as revenue FROM v_monthly_revenue ORDER BY month"
 
         historical_data = await execute_safe_query(query)
 

@@ -121,10 +121,11 @@ class ZillizService:
         """
         Trả về thông tin schema mặc định khi Zilliz chưa được cấu hình.
         Dùng cho Dify Agent để hiểu cấu trúc bảng.
+        Tables are in public schema (Supabase PostgREST compatible).
         """
         return [
             {
-                "name": "analytics_mart.fact_sales",
+                "name": "fact_sales",
                 "type": "fact_table",
                 "description": "Bảng fact chứa giao dịch bán hàng",
                 "schema_info": json.dumps({
@@ -149,7 +150,7 @@ class ZillizService:
                 }),
             },
             {
-                "name": "analytics_mart.dim_products",
+                "name": "dim_products",
                 "type": "dimension_table",
                 "description": "Bảng dimension sản phẩm",
                 "schema_info": json.dumps({
@@ -164,7 +165,7 @@ class ZillizService:
                 }),
             },
             {
-                "name": "analytics_mart.dim_customers",
+                "name": "dim_customers",
                 "type": "dimension_table",
                 "description": "Bảng dimension khách hàng",
                 "schema_info": json.dumps({
@@ -179,7 +180,7 @@ class ZillizService:
                 }),
             },
             {
-                "name": "analytics_mart.v_daily_revenue",
+                "name": "v_daily_revenue",
                 "type": "view",
                 "description": "View doanh thu theo ngày",
                 "schema_info": json.dumps({
@@ -193,7 +194,7 @@ class ZillizService:
                 }),
             },
             {
-                "name": "analytics_mart.v_monthly_revenue",
+                "name": "v_monthly_revenue",
                 "type": "view",
                 "description": "View doanh thu theo tháng",
                 "schema_info": json.dumps({
@@ -202,6 +203,35 @@ class ZillizService:
                         {"name": "total_orders", "type": "BIGINT"},
                         {"name": "total_revenue", "type": "NUMERIC"},
                         {"name": "avg_order_value", "type": "NUMERIC"},
+                    ]
+                }),
+            },
+            {
+                "name": "v_product_performance",
+                "type": "view",
+                "description": "View hiệu suất sản phẩm",
+                "schema_info": json.dumps({
+                    "columns": [
+                        {"name": "product_id", "type": "INTEGER"},
+                        {"name": "product_name", "type": "VARCHAR"},
+                        {"name": "category", "type": "VARCHAR"},
+                        {"name": "total_orders", "type": "BIGINT"},
+                        {"name": "total_quantity", "type": "BIGINT"},
+                        {"name": "total_revenue", "type": "NUMERIC"},
+                    ]
+                }),
+            },
+            {
+                "name": "v_customer_segment_revenue",
+                "type": "view",
+                "description": "View doanh thu theo phân khúc khách hàng",
+                "schema_info": json.dumps({
+                    "columns": [
+                        {"name": "segment", "type": "VARCHAR"},
+                        {"name": "region", "type": "VARCHAR"},
+                        {"name": "total_customers", "type": "BIGINT"},
+                        {"name": "total_orders", "type": "BIGINT"},
+                        {"name": "total_revenue", "type": "NUMERIC"},
                     ]
                 }),
             },
