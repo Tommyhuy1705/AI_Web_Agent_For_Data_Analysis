@@ -29,6 +29,7 @@ import {
 } from "recharts";
 import { useAgentStore, type ChartConfig } from "@/store/useAgentStore";
 import { BarChart3, Table, TrendingUp, X } from "lucide-react";
+import { chartConfigSchema } from "@/lib/schemas";
 
 // Default colors
 const COLORS = [
@@ -42,7 +43,9 @@ interface DynamicChartProps {
 
 export default function DynamicChart({ config: propConfig }: DynamicChartProps) {
   const { activeChart, chartHistory, setActiveChart } = useAgentStore();
-  const config = propConfig || activeChart;
+  const rawConfig = propConfig || activeChart;
+  const parsedConfig = rawConfig ? chartConfigSchema.safeParse(rawConfig) : null;
+  const config = parsedConfig?.success ? (parsedConfig.data as ChartConfig) : null;
 
   // Format number for tooltips
   const formatNumber = (value: number) => {
@@ -70,6 +73,15 @@ export default function DynamicChart({ config: propConfig }: DynamicChartProps) 
 
   // Render chart based on type
   const renderChart = useMemo(() => {
+    if (rawConfig && !config) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+          <TrendingUp className="w-12 h-12 mb-3 animate-pulse" />
+          <p className="text-sm">Dang xu ly bieu do...</p>
+        </div>
+      );
+    }
+
     if (!config || !config.data?.length) {
       return (
         <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
