@@ -75,3 +75,62 @@
 
 ### Bug Fixes Applied
 - [x] Fixed: clearMessages() now also resets chartHistory[] (was persisting after clear)
+
+---
+
+## Phase 5: System Upgrade (2026-03-21)
+
+### Task 1: Static Dashboard Page (/dashboard) ✅
+- [x] Tạo `backend/api/routes/dashboard_router.py` - API endpoint tổng hợp dashboard data
+- [x] Tạo `frontend/app/dashboard/page.tsx` - Trang Dashboard tĩnh với grid biểu đồ
+- [x] Dashboard API trả về 6 datasets: revenue_summary, monthly_revenue, top_products, customer_segments, daily_revenue, channel_distribution
+- [x] Fix revenue_summary: Compute aggregates in Python (PostgREST không hỗ trợ aggregate functions)
+- [x] Fix customer_segments & channel_distribution: Dùng views có sẵn thay vì GROUP BY
+- [x] Thêm link Dashboard vào header trang chính
+- [x] Cập nhật `next.config.mjs` với rewrites cho backend API proxy
+- [x] **Test: 6/6 dashboard datasets PASS** (500 orders, 22.5B VND, 13 months, 10 products, 3 segments, 30 days, 4 channels)
+
+### Task 2: Predict Tool Integration in Chat ✅
+- [x] Thêm keyword detection: "dự đoán", "dự báo", "forecast", "predict", "xu hướng tương lai"...
+- [x] Tạo `_process_predict()` - Xử lý predict queries trong SSE streaming flow
+- [x] Tạo `_handle_predict_query()` - Xử lý predict queries trong non-streaming mode
+- [x] Auto-detect số periods và period_type từ user message (regex parsing)
+- [x] Chart type: `composed` (bar actual + line predicted)
+- [x] Fix PostgREST alias issue: Bỏ column aliases, rename trong Python
+- [x] **Test: Predict via chat/query PASS** (tool_used: predict_revenue, 3 predictions)
+- [x] **Test: Predict via chat/stream PASS** (SSE events: start→status→sql_generated→data_ready→chart→insight→complete→done)
+- [x] **Test: Keyword detection PASS** (6/6 test cases correct routing)
+
+### Task 3: dbt Run Cron Job (Daily at Midnight) ✅
+- [x] Tạo `backend/services/dbt_runner.py` - Service chạy dbt commands bất đồng bộ
+- [x] Thêm APScheduler CronTrigger: `CronTrigger(hour=0, minute=0)` - Mỗi ngày lúc 00:00 UTC
+- [x] Flow: `dbt run` → (nếu thành công) `dbt test`
+- [x] Error handling: Timeout, FileNotFoundError (dbt chưa cài), generic exceptions
+- [x] **Test: Health check shows 2 jobs PASS** (hourly_alarm + daily_dbt)
+- [x] **Test: dbt_runner graceful error PASS** (returns "dbt not found" when dbt not installed)
+
+### Task 4: Monthly Strategy Report Cron Job ✅
+- [x] Tạo `backend/services/monthly_report.py` - Service sinh báo cáo chiến lược hàng tháng
+- [x] Thêm APScheduler CronTrigger: `CronTrigger(day=1, hour=1, minute=0)` - Ngày 1 mỗi tháng lúc 01:00 UTC
+- [x] Flow: Collect data → Run predictions → OpenAI sinh báo cáo → Lưu DB (monthly_insights) → Email
+- [x] Báo cáo gồm 5 phần: Tổng quan tháng, Phân tích sản phẩm, Phân tích khách hàng, Dự báo & xu hướng, Đề xuất chiến lược
+- [x] Tích hợp SendGrid email gửi báo cáo tự động
+- [x] **Test: Health check shows 3 jobs PASS** (hourly_alarm + daily_dbt + monthly_report)
+
+### Task 5: Enhanced SendGrid Email in Alarm Monitor ✅
+- [x] Thêm retry logic: Tối đa 3 lần retry với exponential delay (2s, 4s, 6s)
+- [x] Thêm AI-generated insight: Phân tích nguyên nhân giảm doanh thu bằng OpenAI
+- [x] Nâng cấp HTML email template: KPI cards, severity colors, detail table
+- [x] Thêm CTA button: Link tới /dashboard để xem chi tiết
+- [x] Thêm FRONTEND_URL config cho email links
+- [x] **Test: Alarm SSE stream PASS** (keep-alive ping working)
+- [x] **Test: Backend healthy with 3 scheduler jobs PASS**
+
+### Commits Pushed (Phase 5)
+| Commit | Message |
+|--------|---------|
+| `0a7ab1e` | feat: add Dashboard page with grid charts and dashboard API endpoint |
+| `b200372` | feat: integrate predict tool into chat flow with auto-detection |
+| `c7e4067` | feat: add dbt run cron job (daily at midnight) via APScheduler |
+| `7a35220` | feat: add monthly strategy report cron job (1st of month) |
+| `7fb238c` | feat: upgrade alarm_monitor with enhanced SendGrid email, retry logic, AI insight |
