@@ -7,6 +7,8 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useAgentStore } from "@/store/useAgentStore";
 import { useAgentStream } from "@/hooks/useAgentStream";
 import {
@@ -18,8 +20,72 @@ import {
   Loader2,
   Database,
   BarChart3,
+  Copy,
+  Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+function MarkdownMessage({ content }: { content: string }) {
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        code({ inline, className, children, ...props }: any) {
+          const rawCode = String(children).replace(/\n$/, "");
+
+          if (inline) {
+            return (
+              <code className="px-1 py-0.5 rounded bg-black/10 text-[12px]" {...props}>
+                {children}
+              </code>
+            );
+          }
+
+          const language = (className || "").replace("language-", "") || "text";
+          const isCopied = copiedCode === rawCode;
+
+          return (
+            <div className="relative my-2 rounded-md overflow-hidden border bg-black text-white">
+              <div className="flex items-center justify-between px-3 py-1.5 text-[10px] uppercase tracking-wide bg-black/80 border-b border-white/10">
+                <span>{language}</span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(rawCode);
+                    setCopiedCode(rawCode);
+                    setTimeout(() => setCopiedCode(null), 1200);
+                  }}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white/10 hover:bg-white/20"
+                >
+                  {isCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                  {isCopied ? "Copied" : "Copy code"}
+                </button>
+              </div>
+              <pre className="p-3 overflow-x-auto text-[12px] leading-relaxed">
+                <code className={className} {...props}>
+                  {rawCode}
+                </code>
+              </pre>
+            </div>
+          );
+        },
+        p({ children }) {
+          return <p className="mb-2 last:mb-0">{children}</p>;
+        },
+        ul({ children }) {
+          return <ul className="list-disc pl-5 mb-2">{children}</ul>;
+        },
+        ol({ children }) {
+          return <ol className="list-decimal pl-5 mb-2">{children}</ol>;
+        },
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+}
 
 export default function ChatInterface() {
   const [input, setInput] = useState("");
@@ -146,13 +212,19 @@ export default function ChatInterface() {
                 )}
               >
                 {/* Message content */}
-                <div className="whitespace-pre-wrap">{msg.content || (isStreaming && msg.role === "assistant" ? (
-                  <span className="flex items-center gap-1">
-                    <span className="typing-dot w-1.5 h-1.5 bg-current rounded-full" />
-                    <span className="typing-dot w-1.5 h-1.5 bg-current rounded-full" />
-                    <span className="typing-dot w-1.5 h-1.5 bg-current rounded-full" />
-                  </span>
-                ) : "")}</div>
+                <div className="whitespace-pre-wrap">
+                  {msg.content ? (
+                    <MarkdownMessage content={msg.content} />
+                  ) : isStreaming && msg.role === "assistant" ? (
+                    <span className="flex items-center gap-1">
+                      <span className="typing-dot w-1.5 h-1.5 bg-current rounded-full" />
+                      <span className="typing-dot w-1.5 h-1.5 bg-current rounded-full" />
+                      <span className="typing-dot w-1.5 h-1.5 bg-current rounded-full" />
+                    </span>
+                  ) : (
+                    ""
+                  )}
+                </div>
 
                 {/* Metadata badges */}
                 {msg.metadata && msg.role === "assistant" && (
