@@ -29,11 +29,11 @@
 - [x] Viết `frontend/hooks/useAgentStream.ts` - xử lý kết nối SSE
 
 ## Phase 4: AI & Services Integration
-- [ ] Viết `backend/ml_models/time_series.py` - module dự đoán dùng Scikit-learn/Prophet
-- [ ] Tích hợp Dify API workflow vào chat_router.py
-- [ ] Cấu hình Zilliz Vector DB cho Semantic Layer (RAG)
-- [ ] Tích hợp OpenAI GPT cho Text-to-SQL và insight generation
-- [ ] Setup interface hooks cho Voice/Audio (Phase 2 - chưa implement core logic)
+- [x] Viết `backend/ml_models/time_series.py` - module dự đoán dùng Scikit-learn/Prophet
+- [x] Tích hợp Dify API workflow vào chat_router.py
+- [x] Cấu hình Zilliz Vector DB cho Semantic Layer (RAG)
+- [x] Tích hợp OpenAI GPT cho Text-to-SQL và insight generation
+- [x] Setup interface hooks cho Voice/Audio (Phase 2 - chưa implement core logic)
 
 ## System Testing & Build
 - [ ] Test Backend FastAPI khởi động và kết nối Supabase thành công
