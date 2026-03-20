@@ -9,12 +9,17 @@ Flow:
 3. Dify Agent: LLM quét Zilliz -> Sinh SQL -> Gọi /api/sql/execute
 4. Nhận data JSON -> Manus Visualizer sinh cấu hình biểu đồ
 5. Stream kết quả về Frontend qua SSE
+
+Predict Tool Integration:
+- Khi user hỏi về "dự đoán", "forecast", "predict", agent sẽ tự động
+  gọi predict_revenue endpoint thay vì chỉ query SQL.
 """
 
 import asyncio
 import json
 import logging
 import os
+import re
 import uuid
 from typing import Any, AsyncGenerator, Dict, Optional
 
@@ -25,6 +30,7 @@ from pydantic import BaseModel, Field
 
 from backend.services.db_executor import execute_safe_query
 from backend.services.manus_visualizer import generate_chart_config, generate_insight_summary
+from backend.ml_models.time_series import predict_revenue, generate_strategic_insight
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +40,14 @@ router = APIRouter(prefix="/api/chat", tags=["Chat"])
 DIFY_API_URL = os.getenv("DIFY_API_URL", "https://api.dify.ai/v1")
 DIFY_API_KEY = os.getenv("DIFY_API_KEY", "")
 DIFY_APP_TYPE = os.getenv("DIFY_APP_TYPE", "chat")  # chat or workflow
+
+# Predict keywords detection
+PREDICT_KEYWORDS = [
+    "dự đoán", "dự báo", "forecast", "predict", "prediction",
+    "xu hướng tương lai", "tháng tới", "quý tới", "năm tới",
+    "doanh thu sắp tới", "doanh thu tương lai", "revenue forecast",
+    "trend", "next month", "next quarter",
+]
 
 
 class ChatRequest(BaseModel):
@@ -48,6 +62,12 @@ class ChatMessage(BaseModel):
     role: str  # "user", "assistant", "system"
     content: str
     metadata: Optional[Dict[str, Any]] = None
+
+
+def _is_predict_query(message: str) -> bool:
+    """Kiểm tra xem câu hỏi có liên quan đến dự đoán không."""
+    msg_lower = message.lower()
+    return any(kw in msg_lower for kw in PREDICT_KEYWORDS)
 
 
 async def _stream_sse_event(event: str, data: Any) -> str:
@@ -142,6 +162,137 @@ async def _process_with_dify(
         yield await _stream_sse_event("error", {"message": str(e)})
 
 
+async def _process_predict(
+    message: str,
+    user_id: str
+) -> AsyncGenerator[str, None]:
+    """
+    Xử lý câu hỏi dự đoán doanh thu.
+    Flow:
+    1. Query dữ liệu lịch sử từ v_monthly_revenue
+    2. Gọi predict_revenue() để train model và dự đoán
+    3. Sinh biểu đồ kết hợp (historical + predicted)
+    4. Sinh insight chiến lược
+    """
+    from openai import AsyncOpenAI
+
+    client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+
+    yield await _stream_sse_event("status", {"message": "Đang phân tích yêu cầu dự đoán..."})
+
+    try:
+        # Step 1: Parse predict parameters from user message
+        periods = 3  # default
+        period_type = "month"
+
+        # Detect number of periods
+        num_match = re.search(r'(\d+)\s*(tháng|quý|month|quarter)', message.lower())
+        if num_match:
+            periods = min(int(num_match.group(1)), 12)
+            if num_match.group(2) in ("quý", "quarter"):
+                period_type = "quarter"
+
+        yield await _stream_sse_event("status", {
+            "message": f"Đang lấy dữ liệu lịch sử để dự đoán {periods} {period_type}..."
+        })
+
+        # Step 2: Query historical data (no aliases - PostgREST doesn't support them)
+        historical_query = """
+            SELECT month, total_revenue
+            FROM v_monthly_revenue
+            ORDER BY month ASC
+        """
+        yield await _stream_sse_event("sql_generated", {"sql": historical_query})
+
+        historical_data = await execute_safe_query(historical_query)
+
+        if len(historical_data) < 3:
+            yield await _stream_sse_event("error", {
+                "message": f"Cần ít nhất 3 kỳ dữ liệu lịch sử. Hiện có: {len(historical_data)}"
+            })
+            return
+
+        formatted_data = [
+            {"date": str(row["month"]), "revenue": float(row["total_revenue"])}
+            for row in historical_data
+        ]
+
+        yield await _stream_sse_event("data_ready", {
+            "row_count": len(formatted_data),
+            "preview": formatted_data[:5],
+        })
+
+        # Step 3: Run prediction
+        yield await _stream_sse_event("status", {"message": "Đang chạy mô hình dự đoán (Polynomial Regression)..."})
+
+        result = await predict_revenue(
+            historical_data=formatted_data,
+            periods=periods,
+            period_type=period_type,
+        )
+
+        if result.get("error"):
+            yield await _stream_sse_event("error", {"message": result["error"]})
+            return
+
+        # Step 4: Build combined chart (historical + predicted)
+        yield await _stream_sse_event("status", {"message": "Đang tạo biểu đồ dự đoán..."})
+
+        chart_data = []
+        for row in formatted_data:
+            chart_data.append({
+                "period": row["date"][:7] if len(row["date"]) > 7 else row["date"],
+                "actual": row["revenue"],
+                "predicted": None,
+            })
+
+        for pred in result.get("predictions", []):
+            chart_data.append({
+                "period": pred["period"],
+                "actual": None,
+                "predicted": pred["predicted_value"],
+            })
+
+        chart_config = {
+            "chart_type": "composed",
+            "title": f"Dự đoán doanh thu {periods} {period_type} tới",
+            "description": f"Mô hình: Polynomial Regression (R²={result.get('metrics', {}).get('r2_score', 0):.4f})",
+            "config": {
+                "xAxis": {"dataKey": "period", "label": "Kỳ"},
+                "series": [
+                    {"dataKey": "actual", "name": "Doanh thu thực tế", "color": "#3B82F6", "type": "bar"},
+                    {"dataKey": "predicted", "name": "Dự đoán", "color": "#F59E0B", "type": "line"},
+                ],
+            },
+            "data": chart_data,
+            "predictions": result.get("predictions", []),
+            "metrics": result.get("metrics", {}),
+            "trend": result.get("trend", {}),
+        }
+
+        yield await _stream_sse_event("chart", chart_config)
+
+        # Step 5: Generate strategic insight
+        yield await _stream_sse_event("status", {"message": "Đang sinh báo cáo insight chiến lược..."})
+
+        insight = await generate_strategic_insight(result)
+
+        yield await _stream_sse_event("insight", {"text": insight})
+
+        # Step 6: Complete
+        yield await _stream_sse_event("complete", {
+            "message": "Hoàn thành dự đoán!",
+            "tool_used": "predict_revenue",
+            "periods": periods,
+            "period_type": period_type,
+            "row_count": len(formatted_data),
+        })
+
+    except Exception as e:
+        logger.error(f"Predict processing error: {e}", exc_info=True)
+        yield await _stream_sse_event("error", {"message": f"Prediction Error: {str(e)}"})
+
+
 async def _process_direct(
     message: str,
     user_id: str
@@ -149,7 +300,14 @@ async def _process_direct(
     """
     Xử lý trực tiếp không qua Dify.
     Sử dụng OpenAI để sinh SQL, thực thi, và sinh biểu đồ.
+    Tự động detect predict queries và route sang predict tool.
     """
+    # Check if this is a predict query
+    if _is_predict_query(message):
+        async for event in _process_predict(message, user_id):
+            yield event
+        return
+
     from openai import AsyncOpenAI
 
     client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
@@ -271,6 +429,10 @@ async def chat_query(request: ChatRequest):
     logger.info(f"Query request from {request.user_id}: {request.message[:100]}...")
 
     try:
+        # Check if this is a predict query
+        if _is_predict_query(request.message):
+            return await _handle_predict_query(request)
+
         from openai import AsyncOpenAI
         client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
 
@@ -314,3 +476,80 @@ Return ONLY SQL, no markdown."""
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+async def _handle_predict_query(request: ChatRequest) -> dict:
+    """Handle predict query in non-streaming mode."""
+    import re as _re
+
+    periods = 3
+    period_type = "month"
+
+    num_match = _re.search(r'(\d+)\s*(tháng|quý|month|quarter)', request.message.lower())
+    if num_match:
+        periods = min(int(num_match.group(1)), 12)
+        if num_match.group(2) in ("quý", "quarter"):
+            period_type = "quarter"
+
+    # Query historical data (no aliases - PostgREST doesn't support them)
+    historical_data = await execute_safe_query("""
+        SELECT month, total_revenue
+        FROM v_monthly_revenue
+        ORDER BY month ASC
+    """)
+
+    formatted_data = [
+        {"date": str(row["month"]), "revenue": float(row["total_revenue"])}
+        for row in historical_data
+    ]
+
+    # Run prediction
+    result = await predict_revenue(
+        historical_data=formatted_data,
+        periods=periods,
+        period_type=period_type,
+    )
+
+    # Build chart data
+    chart_data = []
+    for row in formatted_data:
+        chart_data.append({
+            "period": row["date"][:7] if len(row["date"]) > 7 else row["date"],
+            "actual": row["revenue"],
+            "predicted": None,
+        })
+    for pred in result.get("predictions", []):
+        chart_data.append({
+            "period": pred["period"],
+            "actual": None,
+            "predicted": pred["predicted_value"],
+        })
+
+    chart_config = {
+        "chart_type": "composed",
+        "title": f"Dự đoán doanh thu {periods} {period_type} tới",
+        "config": {
+            "xAxis": {"dataKey": "period", "label": "Kỳ"},
+            "series": [
+                {"dataKey": "actual", "name": "Doanh thu thực tế", "color": "#3B82F6", "type": "bar"},
+                {"dataKey": "predicted", "name": "Dự đoán", "color": "#F59E0B", "type": "line"},
+            ],
+        },
+        "data": chart_data,
+    }
+
+    # Generate insight
+    insight = await generate_strategic_insight(result)
+
+    return {
+        "success": True,
+        "tool_used": "predict_revenue",
+        "sql": "SELECT month as date, total_revenue as revenue FROM v_monthly_revenue ORDER BY month ASC",
+        "data": chart_data,
+        "row_count": len(chart_data),
+        "chart": chart_config,
+        "insight": insight,
+        "predictions": result.get("predictions", []),
+        "metrics": result.get("metrics", {}),
+        "trend": result.get("trend", {}),
+    }
