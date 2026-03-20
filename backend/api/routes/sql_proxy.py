@@ -11,7 +11,11 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from backend.services.db_executor import execute_safe_query, health_check
+from backend.services.db_executor import (
+    execute_safe_query,
+    health_check,
+    prepare_safe_select_query,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +34,7 @@ class SQLExecuteResponse(BaseModel):
     success: bool
     data: List[Dict[str, Any]] = []
     row_count: int = 0
+    executed_sql: Optional[str] = None
     error: Optional[str] = None
 
 
@@ -48,8 +53,9 @@ async def execute_sql(request: SQLExecuteRequest):
     logger.info(f"SQL Proxy request: {request.sql[:100]}...")
 
     try:
+        safe_sql = prepare_safe_select_query(request.sql)
         data = await execute_safe_query(
-            sql=request.sql,
+            sql=safe_sql,
             params=request.params,
             timeout=request.timeout,
         )
@@ -63,6 +69,7 @@ async def execute_sql(request: SQLExecuteRequest):
             success=True,
             data=serialized_data,
             row_count=len(serialized_data),
+            executed_sql=safe_sql,
         )
 
     except ValueError as e:

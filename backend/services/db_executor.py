@@ -13,6 +13,9 @@ import asyncpg
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_MAX_ROWS = int(os.getenv("SQL_PROXY_MAX_ROWS", "1000"))
+MAX_SQL_LENGTH = int(os.getenv("SQL_PROXY_MAX_SQL_LENGTH", "20000"))
+
 # Supabase connection string
 DATABASE_URL = os.getenv(
     "SUPABASE_DATABASE_URL",
@@ -51,13 +54,23 @@ def validate_sql_query(sql: str) -> bool:
     Validate SQL query - chỉ cho phép SELECT statements.
     Ngăn chặn SQL injection và các câu lệnh nguy hiểm.
     """
-    # Loại bỏ comments
     cleaned = re.sub(r'--.*$', '', sql, flags=re.MULTILINE)
     cleaned = re.sub(r'/\*.*?\*/', '', cleaned, flags=re.DOTALL)
     cleaned = cleaned.strip().upper()
 
-    # Chỉ cho phép SELECT
-    if not cleaned.startswith("SELECT"):
+    if not cleaned:
+        return False
+
+    if len(cleaned) > MAX_SQL_LENGTH:
+        return False
+
+    # Chặn multi-statement (ngoại trừ dấu ; ở cuối)
+    compact = cleaned.rstrip(";").strip()
+    if ";" in compact:
+        return False
+
+    # Chỉ cho phép truy vấn read-only: SELECT hoặc WITH ... SELECT
+    if not (cleaned.startswith("SELECT") or cleaned.startswith("WITH")):
         return False
 
     # Từ chối các keyword nguy hiểm
@@ -67,16 +80,43 @@ def validate_sql_query(sql: str) -> bool:
         "INTO", "SET", "COPY",
     ]
 
-    # Kiểm tra từng keyword (ngoại trừ trong subquery context)
     for keyword in dangerous_keywords:
-        # Cho phép "INTO" trong "SELECT ... INTO" nếu là phần của subquery
-        if keyword == "INTO":
-            continue
         pattern = rf'\b{keyword}\b'
         if re.search(pattern, cleaned):
             return False
 
+    expensive_patterns = [
+        r"\bCROSS\s+JOIN\b",
+        r"\bNATURAL\s+JOIN\b",
+        r"\bGENERATE_SERIES\s*\(",
+        r"\bPG_SLEEP\s*\(",
+    ]
+    for pattern in expensive_patterns:
+        if re.search(pattern, cleaned):
+            return False
+
     return True
+
+
+def normalize_sql(sql: str) -> str:
+    """Normalize SQL whitespace and remove trailing semicolons."""
+    normalized = sql.strip().rstrip(";").strip()
+    return normalized
+
+
+def ensure_default_limit(sql: str, max_rows: int = DEFAULT_MAX_ROWS) -> str:
+    """Append LIMIT if caller did not provide one in outer query."""
+    normalized = normalize_sql(sql)
+    if re.search(r"\bLIMIT\s+\d+\b", normalized, flags=re.IGNORECASE):
+        return normalized
+    return f"{normalized} LIMIT {max_rows}"
+
+
+def prepare_safe_select_query(sql: str, max_rows: int = DEFAULT_MAX_ROWS) -> str:
+    """Validate and enforce safe defaults before SQL execution."""
+    if not validate_sql_query(sql):
+        raise ValueError("Only safe read-only SELECT queries are allowed")
+    return ensure_default_limit(sql, max_rows=max_rows)
 
 
 async def execute_safe_query(
@@ -88,16 +128,15 @@ async def execute_safe_query(
     Thực thi SQL query an toàn (chỉ SELECT).
     Trả về danh sách dict (mảng JSON).
     """
-    if not validate_sql_query(sql):
-        raise ValueError("Only SELECT queries are allowed for security reasons")
+    safe_sql = prepare_safe_select_query(sql)
 
     pool = await get_pool()
     async with pool.acquire() as conn:
         try:
             if params:
-                rows = await conn.fetch(sql, *params, timeout=timeout)
+                rows = await conn.fetch(safe_sql, *params, timeout=timeout)
             else:
-                rows = await conn.fetch(sql, timeout=timeout)
+                rows = await conn.fetch(safe_sql, timeout=timeout)
 
             # Convert Record objects to dicts
             result = [dict(row) for row in rows]

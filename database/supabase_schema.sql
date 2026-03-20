@@ -97,6 +97,22 @@ CREATE INDEX IF NOT EXISTS idx_fact_sales_channel
     ON analytics_mart.fact_sales (channel);
 
 -- ============================================================
+-- SECURITY: Read-only role for AI SQL proxy
+-- Run manually with secure password in Supabase SQL editor.
+-- ============================================================
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'readonly_ai') THEN
+        CREATE ROLE readonly_ai LOGIN PASSWORD 'change_me_strong_password';
+    END IF;
+END $$;
+
+GRANT USAGE ON SCHEMA analytics_mart TO readonly_ai;
+GRANT SELECT ON ALL TABLES IN SCHEMA analytics_mart TO readonly_ai;
+ALTER DEFAULT PRIVILEGES IN SCHEMA analytics_mart
+GRANT SELECT ON TABLES TO readonly_ai;
+
+-- ============================================================
 -- SCHEMA 3: system_metrics
 -- Bảng hourly_snapshot để lưu kết quả tính toán mỗi giờ
 -- Dùng cho tính năng Proactive Alarm
