@@ -6,23 +6,17 @@ Nhận mảng JSON data, sinh ra cấu hình Echarts/Recharts JSON
 
 import json
 import logging
-import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from openai import AsyncOpenAI
+from backend.services.llm_client import chat_completion, is_configured
 
 logger = logging.getLogger(__name__)
-
-# OpenAI client cho việc sinh cấu hình biểu đồ
-client = AsyncOpenAI(
-    api_key=os.getenv("OPENAI_API_KEY", ""),
-)
 
 CHART_SYSTEM_PROMPT = """You are a data visualization expert. Given a JSON dataset and a user question,
 generate an appropriate chart configuration in JSON format compatible with Recharts/Echarts.
 
 Rules:
-1. Analyze the data structure and choose the best chart type (bar, line, pie, area, scatter, etc.)
+1. Analyze the data structure and choose the best chart type (bar, line, pie, area, scatter, composed)
 2. Return a JSON object with the following structure:
 {
     "chart_type": "bar|line|pie|area|scatter|composed",
@@ -47,18 +41,9 @@ Rules:
 async def generate_chart_config(
     data: List[Dict[str, Any]],
     user_question: str,
-    model: str = "gpt-4.1-mini"
 ) -> Dict[str, Any]:
     """
     Sinh cấu hình biểu đồ từ dữ liệu JSON.
-
-    Args:
-        data: Mảng JSON data từ SQL query
-        user_question: Câu hỏi của user để xác định loại biểu đồ phù hợp
-        model: Model OpenAI sử dụng
-
-    Returns:
-        Dict chứa cấu hình biểu đồ cho Frontend
     """
     if not data:
         return {
@@ -69,11 +54,13 @@ async def generate_chart_config(
             "data": [],
         }
 
+    if not is_configured():
+        logger.warning("LLM not configured, using fallback chart config")
+        return _fallback_chart_config(data, user_question)
+
     try:
-        # Giới hạn data gửi cho LLM (tránh token quá lớn)
         sample_data = data[:50] if len(data) > 50 else data
 
-        # Serialize data, xử lý các kiểu dữ liệu đặc biệt
         serialized_data = json.dumps(
             sample_data,
             default=str,
@@ -90,8 +77,7 @@ Total rows: {len(data)}
 
 Generate the best chart configuration for this data."""
 
-        response = await client.chat.completions.create(
-            model=model,
+        content = await chat_completion(
             messages=[
                 {"role": "system", "content": CHART_SYSTEM_PROMPT},
                 {"role": "user", "content": user_message},
@@ -101,7 +87,7 @@ Generate the best chart configuration for this data."""
             response_format={"type": "json_object"},
         )
 
-        chart_config = json.loads(response.choices[0].message.content)
+        chart_config = json.loads(content)
         logger.info(f"Generated chart config: type={chart_config.get('chart_type')}")
         return chart_config
 
@@ -125,7 +111,6 @@ def _fallback_chart_config(
 
     keys = list(data[0].keys())
 
-    # Tìm cột số và cột text
     numeric_keys = []
     text_keys = []
     for key in keys:
@@ -144,9 +129,7 @@ def _fallback_chart_config(
             "data": data[:100],
         }
 
-    # Mặc định: bar chart
     x_key = text_keys[0] if text_keys else keys[0]
-    y_key = numeric_keys[0]
 
     colors = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899"]
 
@@ -174,16 +157,17 @@ def _fallback_chart_config(
 async def generate_insight_summary(
     data: List[Dict[str, Any]],
     user_question: str,
-    model: str = "gpt-4.1-mini"
 ) -> str:
     """
     Sinh tóm tắt insight từ dữ liệu.
     """
+    if not is_configured():
+        return "Không thể sinh tóm tắt insight (LLM chưa cấu hình). Vui lòng xem dữ liệu biểu đồ để phân tích."
+
     try:
         serialized = json.dumps(data[:30], default=str, ensure_ascii=False)
 
-        response = await client.chat.completions.create(
-            model=model,
+        content = await chat_completion(
             messages=[
                 {
                     "role": "system",
@@ -198,7 +182,7 @@ async def generate_insight_summary(
             max_tokens=500,
         )
 
-        return response.choices[0].message.content
+        return content
     except Exception as e:
         logger.error(f"Error generating insight: {e}")
         return "Không thể sinh tóm tắt insight. Vui lòng xem dữ liệu biểu đồ để phân tích."

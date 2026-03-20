@@ -6,7 +6,7 @@ Chạy vào ngày 1 mỗi tháng lúc 01:00 UTC qua APScheduler.
 Flow:
 1. Query dữ liệu tổng hợp tháng trước từ Supabase
 2. Chạy predict_revenue để dự đoán 3 tháng tới
-3. Gọi OpenAI sinh báo cáo chiến lược chi tiết
+3. Gọi LLM (Qwen/OpenAI) sinh báo cáo chiến lược chi tiết
 4. Lưu báo cáo vào bảng monthly_insights (Supabase REST API)
 5. (Optional) Gửi email báo cáo qua SendGrid
 """
@@ -17,15 +17,11 @@ import os
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from openai import AsyncOpenAI
-
 from backend.services.db_executor import execute_safe_query, upsert_via_rest
+from backend.services.llm_client import chat_completion, is_configured
 from backend.ml_models.time_series import predict_revenue
 
 logger = logging.getLogger(__name__)
-
-# OpenAI client
-openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
 
 # SendGrid config (reuse from alarm_monitor)
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY", "")
@@ -46,24 +42,14 @@ async def generate_monthly_report():
     logger.info("=" * 50)
 
     try:
-        # Step 1: Xác định tháng báo cáo (tháng trước)
         now = datetime.utcnow()
         report_month = (now.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
         logger.info(f"Generating report for month: {report_month}")
 
-        # Step 2: Thu thập dữ liệu
         data = await _collect_monthly_data(report_month)
-
-        # Step 3: Chạy dự đoán
         predictions = await _run_predictions()
-
-        # Step 4: Sinh báo cáo chiến lược
         report_content = await _generate_report_content(data, predictions, report_month)
-
-        # Step 5: Lưu vào database
         await _save_report(report_month, report_content, data, predictions)
-
-        # Step 6: Gửi email (nếu có cấu hình)
         await _send_report_email(report_month, report_content)
 
         logger.info(f"MONTHLY REPORT COMPLETE for {report_month}")
@@ -82,7 +68,6 @@ async def _collect_monthly_data(report_month: str) -> Dict[str, Any]:
     """Thu thập dữ liệu tổng hợp cho tháng báo cáo."""
     data = {}
 
-    # Monthly revenue overview
     try:
         monthly = await execute_safe_query("""
             SELECT month, total_orders, total_revenue, avg_order_value
@@ -94,7 +79,6 @@ async def _collect_monthly_data(report_month: str) -> Dict[str, Any]:
         logger.error(f"Error fetching monthly revenue: {e}")
         data["monthly_revenue"] = []
 
-    # Top products
     try:
         products = await execute_safe_query("""
             SELECT product_name, category, total_orders, total_revenue
@@ -107,7 +91,6 @@ async def _collect_monthly_data(report_month: str) -> Dict[str, Any]:
         logger.error(f"Error fetching top products: {e}")
         data["top_products"] = []
 
-    # Customer segments
     try:
         segments = await execute_safe_query("""
             SELECT segment, total_customers, total_orders, total_revenue
@@ -156,7 +139,10 @@ async def _generate_report_content(
     predictions: Dict[str, Any],
     report_month: str,
 ) -> str:
-    """Sinh nội dung báo cáo chiến lược bằng OpenAI."""
+    """Sinh nội dung báo cáo chiến lược bằng LLM (Qwen/OpenAI)."""
+    if not is_configured():
+        return f"# Báo cáo Chiến lược Tháng {report_month}\n\nKhông thể sinh báo cáo tự động. LLM chưa cấu hình."
+
     try:
         prompt = f"""Bạn là Giám đốc Phân tích Dữ liệu (Chief Data Officer) của một doanh nghiệp bán lẻ.
 Hãy viết BÁO CÁO CHIẾN LƯỢC DOANH THU THÁNG {report_month} dựa trên dữ liệu sau.
@@ -185,8 +171,7 @@ Viết báo cáo bằng tiếng Việt, chuyên nghiệp, gồm các phần:
 
 Sử dụng số liệu cụ thể, không ảo giác. Format Markdown."""
 
-        response = await openai_client.chat.completions.create(
-            model="gpt-4.1-mini",
+        content = await chat_completion(
             messages=[
                 {
                     "role": "system",
@@ -198,11 +183,11 @@ Sử dụng số liệu cụ thể, không ảo giác. Format Markdown."""
             max_tokens=3000,
         )
 
-        return response.choices[0].message.content
+        return content
 
     except Exception as e:
         logger.error(f"Report generation error: {e}")
-        return f"# Báo cáo Chiến lược Tháng {report_month}\n\nKhông thể sinh báo cáo tự động. Lỗi: {str(e)}\n\nVui lòng kiểm tra cấu hình OpenAI API."
+        return f"# Báo cáo Chiến lược Tháng {report_month}\n\nKhông thể sinh báo cáo tự động. Lỗi: {str(e)}\n\nVui lòng kiểm tra cấu hình LLM."
 
 
 async def _save_report(
@@ -235,7 +220,6 @@ async def _save_report(
 
     except Exception as e:
         logger.warning(f"Could not save report to DB (table may not exist): {e}")
-        # Non-fatal: report was still generated and can be emailed
 
 
 async def _send_report_email(report_month: str, content: str):
@@ -247,10 +231,9 @@ async def _send_report_email(report_month: str, content: str):
     try:
         import httpx
 
-        # Convert markdown to simple HTML
         html_content = f"""
         <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;">
-            <h1 style="color: #1a56db;">📊 Báo cáo Chiến lược Doanh thu - Tháng {report_month}</h1>
+            <h1 style="color: #1a56db;">Báo cáo Chiến lược Doanh thu - Tháng {report_month}</h1>
             <hr>
             <div style="white-space: pre-wrap; line-height: 1.6;">
 {content}
@@ -269,7 +252,7 @@ async def _send_report_email(report_month: str, content: str):
                 json={
                     "personalizations": [{"to": [{"email": e} for e in REPORT_RECIPIENTS]}],
                     "from": {"email": SENDGRID_FROM_EMAIL, "name": "Omni-Revenue Agent"},
-                    "subject": f"📊 Báo cáo Chiến lược Doanh thu - Tháng {report_month}",
+                    "subject": f"Báo cáo Chiến lược Doanh thu - Tháng {report_month}",
                     "content": [{"type": "text/html", "value": html_content}],
                 },
                 headers={

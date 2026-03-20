@@ -206,11 +206,13 @@ async def _trigger_alarm(
 async def _generate_alarm_insight(alarm_data: Dict[str, Any]) -> Optional[str]:
     """Sinh AI insight về nguyên nhân có thể gây giảm doanh thu."""
     try:
-        from openai import AsyncOpenAI
-        client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+        from backend.services.llm_client import chat_completion, is_configured
 
-        response = await client.chat.completions.create(
-            model="gpt-4.1-nano",
+        if not is_configured():
+            logger.info("LLM not configured, skipping alarm insight generation")
+            return None
+
+        content = await chat_completion(
             messages=[
                 {
                     "role": "system",
@@ -228,7 +230,7 @@ async def _generate_alarm_insight(alarm_data: Dict[str, Any]) -> Optional[str]:
             temperature=0.3,
             max_tokens=300,
         )
-        return response.choices[0].message.content
+        return content
     except Exception as e:
         logger.warning(f"Could not generate AI insight for alarm: {e}")
         return None

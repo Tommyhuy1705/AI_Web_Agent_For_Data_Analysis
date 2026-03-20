@@ -12,10 +12,13 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Load .env from backend directory
+# Load .env: try backend/.env first, then root .env
 _env_path = Path(__file__).parent / ".env"
+_root_env_path = Path(__file__).parent.parent / ".env"
 if _env_path.exists():
     load_dotenv(_env_path, override=True)
+elif _root_env_path.exists():
+    load_dotenv(_root_env_path, override=True)
 else:
     load_dotenv()  # fallback to cwd
 
@@ -175,10 +178,16 @@ async def root():
 async def health():
     """Health check endpoint."""
     from backend.services.db_executor import health_check
+    from backend.services.llm_client import get_provider, get_model, is_configured
     db_status = await health_check()
     return {
         "status": "healthy",
         "database": db_status,
+        "llm": {
+            "provider": get_provider(),
+            "model": get_model(),
+            "configured": is_configured(),
+        },
         "scheduler": {
             "running": scheduler.running,
             "jobs": len(scheduler.get_jobs()),

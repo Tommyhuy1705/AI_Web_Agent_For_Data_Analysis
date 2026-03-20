@@ -6,7 +6,7 @@ Flow:
 1. Query dữ liệu time series (tháng/quý) từ Supabase
 2. Train mô hình in-memory (Linear Regression / Polynomial)
 3. Trả ra con số dự đoán
-4. Kết hợp ngữ cảnh sự kiện (từ Zilliz) + OpenAI sinh báo cáo insight
+4. Kết hợp ngữ cảnh sự kiện (từ Zilliz) + LLM sinh báo cáo insight
 """
 
 import logging
@@ -22,12 +22,9 @@ from sklearn.preprocessing import PolynomialFeatures
 from sklearn.pipeline import make_pipeline
 from sklearn.metrics import mean_absolute_error, r2_score
 
-from openai import AsyncOpenAI
+from backend.services.llm_client import chat_completion, is_configured
 
 logger = logging.getLogger(__name__)
-
-# OpenAI client
-openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
 
 # Zilliz configuration (Vector DB cho Semantic Layer)
 ZILLIZ_URI = os.getenv("ZILLIZ_CLOUD_URI", "")
@@ -49,27 +46,17 @@ class TimeSeriesPredictor:
     def fit(self, dates: List[str], values: List[float]) -> Dict[str, Any]:
         """
         Train mô hình từ dữ liệu time series.
-
-        Args:
-            dates: Danh sách ngày/tháng (format: YYYY-MM-DD hoặc YYYY-MM)
-            values: Danh sách giá trị doanh thu tương ứng
-
-        Returns:
-            Dict chứa metrics của model
         """
         if len(dates) < 3:
             raise ValueError("Cần ít nhất 3 data points để train model")
 
-        # Convert dates to numeric features
         df = pd.DataFrame({"date": pd.to_datetime(dates), "value": values})
         df = df.sort_values("date")
 
-        # Feature: số ngày kể từ ngày đầu tiên
         df["days"] = (df["date"] - df["date"].min()).dt.days
         X = df["days"].values.reshape(-1, 1)
         y = df["value"].values
 
-        # Train Polynomial Regression
         self.model = make_pipeline(
             PolynomialFeatures(degree=self.degree, include_bias=False),
             LinearRegression()
@@ -77,7 +64,6 @@ class TimeSeriesPredictor:
         self.model.fit(X, y)
         self.is_fitted = True
 
-        # Calculate metrics
         y_pred = self.model.predict(X)
         self.metrics = {
             "mae": float(mean_absolute_error(y, y_pred)),
@@ -86,7 +72,6 @@ class TimeSeriesPredictor:
             "degree": self.degree,
         }
 
-        # Store reference data
         self._min_date = df["date"].min()
         self._max_date = df["date"].max()
         self._last_value = float(y[-1])
@@ -97,13 +82,6 @@ class TimeSeriesPredictor:
     def predict(self, future_periods: int = 3, period_days: int = 30) -> List[Dict[str, Any]]:
         """
         Dự đoán cho các kỳ tương lai.
-
-        Args:
-            future_periods: Số kỳ cần dự đoán
-            period_days: Số ngày mỗi kỳ (30 = tháng, 90 = quý)
-
-        Returns:
-            List các dict chứa ngày và giá trị dự đoán
         """
         if not self.is_fitted:
             raise ValueError("Model chưa được train. Gọi fit() trước.")
@@ -116,7 +94,6 @@ class TimeSeriesPredictor:
             X_future = np.array([[future_days]])
             predicted_value = float(self.model.predict(X_future)[0])
 
-            # Đảm bảo giá trị dự đoán không âm
             predicted_value = max(0, predicted_value)
 
             future_date = self._max_date + timedelta(days=i * period_days)
@@ -130,44 +107,50 @@ class TimeSeriesPredictor:
 
 
 async def predict_revenue(
-    historical_data: List[Dict[str, Any]],
+    historical_data: List[Dict[str, Any]] = None,
     periods: int = 3,
     period_type: str = "month"
 ) -> Dict[str, Any]:
     """
     API chính: Dự đoán doanh thu từ dữ liệu lịch sử.
-
-    Args:
-        historical_data: List dict với keys 'date' và 'revenue'
-        periods: Số kỳ cần dự đoán
-        period_type: 'month' hoặc 'quarter'
-
-    Returns:
-        Dict chứa predictions, metrics, và insight
+    Nếu không truyền historical_data, tự query từ DB.
     """
     try:
+        if historical_data is None:
+            from backend.services.db_executor import execute_safe_query
+            raw_data = await execute_safe_query(
+                "SELECT month, total_revenue FROM analytics_mart.v_monthly_revenue ORDER BY month"
+            )
+            historical_data = [
+                {"date": str(row.get("month", "")), "revenue": row.get("total_revenue", 0)}
+                for row in raw_data
+            ]
+
+        if not historical_data:
+            return {"error": "No historical data available", "predictions": [], "metrics": {}}
+
         dates = [d["date"] if isinstance(d["date"], str) else str(d["date"]) for d in historical_data]
         values = [float(d["revenue"]) for d in historical_data]
 
-        # Train model
         predictor = TimeSeriesPredictor(degree=2)
         metrics = predictor.fit(dates, values)
 
-        # Predict
         period_days = 30 if period_type == "month" else 90
         predictions = predictor.predict(
             future_periods=periods,
             period_days=period_days
         )
 
-        # Tính trend
         if len(values) >= 2:
             recent_trend = ((values[-1] - values[-2]) / values[-2]) * 100 if values[-2] != 0 else 0
         else:
             recent_trend = 0
 
         result = {
-            "predictions": predictions,
+            "predictions": [
+                {"month": p["period"], "predicted_revenue": p["predicted_value"], "confidence": p["confidence"]}
+                for p in predictions
+            ],
             "metrics": metrics,
             "trend": {
                 "direction": "up" if recent_trend > 0 else "down",
@@ -196,19 +179,14 @@ async def predict_revenue(
 async def generate_strategic_insight(
     predictions: Dict[str, Any],
     context: str = "",
-    model: str = "gpt-4.1-mini"
 ) -> str:
     """
     Sinh báo cáo insight chiến lược từ dự đoán + ngữ cảnh sự kiện.
-
-    Args:
-        predictions: Kết quả từ predict_revenue()
-        context: Ngữ cảnh bổ sung (từ Zilliz Vector DB)
-        model: OpenAI model
-
-    Returns:
-        Báo cáo insight chiến lược bằng tiếng Việt
+    Uses centralized LLM client (Qwen or OpenAI).
     """
+    if not is_configured():
+        return "Không thể sinh báo cáo insight (LLM chưa cấu hình)."
+
     try:
         prompt = f"""Bạn là một chuyên gia phân tích kinh doanh. Dựa trên dữ liệu dự đoán doanh thu sau,
 hãy viết một báo cáo insight chiến lược ngắn gọn (3-5 đoạn) bằng tiếng Việt.
@@ -226,8 +204,7 @@ Yêu cầu:
 4. Không ảo giác - chỉ dựa trên dữ liệu thực
 5. Sử dụng ngôn ngữ chuyên nghiệp, sắc bén"""
 
-        response = await openai_client.chat.completions.create(
-            model=model,
+        content = await chat_completion(
             messages=[
                 {"role": "system", "content": "Bạn là chuyên gia phân tích kinh doanh cấp cao."},
                 {"role": "user", "content": prompt},
@@ -236,20 +213,16 @@ Yêu cầu:
             max_tokens=1000,
         )
 
-        return response.choices[0].message.content
+        return content
 
     except Exception as e:
         logger.error(f"Insight generation error: {e}")
-        return "Không thể sinh báo cáo insight. Vui lòng kiểm tra cấu hình OpenAI API."
+        return "Không thể sinh báo cáo insight. Vui lòng kiểm tra cấu hình LLM."
 
 
 async def search_context_from_zilliz(query: str) -> str:
     """
     Tìm kiếm ngữ cảnh sự kiện từ Zilliz Vector DB (Semantic Layer).
-    Ví dụ: "Sắp có chiến dịch Black Friday"
-
-    Returns:
-        Chuỗi ngữ cảnh liên quan
     """
     if not ZILLIZ_URI or not ZILLIZ_API_KEY:
         logger.info("Zilliz not configured, returning empty context")
@@ -263,7 +236,7 @@ async def search_context_from_zilliz(query: str) -> str:
                 f"{ZILLIZ_URI}/v1/vector/search",
                 json={
                     "collectionName": "business_events",
-                    "vector": [],  # Sẽ được encode bởi Zilliz
+                    "vector": [],
                     "filter": "",
                     "limit": 5,
                     "outputFields": ["event_name", "description", "date", "impact"],
