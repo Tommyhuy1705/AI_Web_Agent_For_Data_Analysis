@@ -7,6 +7,12 @@ Flow:
 1. Query tổng doanh thu giờ vừa qua từ fact_sales (public schema)
 2. So sánh với value trong hourly_snapshot
 3. Nếu giảm > 15%: UPSERT value mới -> Gọi webhook Dify -> SendGrid email -> SSE thông báo
+
+SendGrid Integration:
+- Gửi email cảnh báo khi alarm triggered
+- Bao gồm AI-generated insight về nguyên nhân
+- Link tới Dashboard để xem chi tiết
+- Retry logic (tối đa 3 lần)
 """
 
 import json
@@ -32,6 +38,11 @@ DIFY_API_KEY = os.getenv("DIFY_API_KEY", "")
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY", "")
 SENDGRID_FROM_EMAIL = os.getenv("SENDGRID_FROM_EMAIL", "noreply@omni-revenue.com")
 ALERT_RECIPIENTS = [e.strip() for e in os.getenv("ALERT_RECIPIENTS", "admin@company.com").split(",")]
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+# Retry configuration
+EMAIL_MAX_RETRIES = 3
+EMAIL_RETRY_DELAY = 2  # seconds
 
 # SSE event queue (sẽ được inject từ main.py)
 _alarm_event_queue = None
@@ -156,9 +167,10 @@ async def _trigger_alarm(
 ):
     """
     Kích hoạt chuỗi cảnh báo:
-    1. Gọi webhook Dify để sinh câu cảnh báo tự nhiên
-    2. Gửi email qua SendGrid
-    3. Đẩy thông báo SSE lên Frontend
+    1. Sinh AI insight về nguyên nhân
+    2. Gọi webhook Dify để sinh câu cảnh báo tự nhiên
+    3. Gửi email qua SendGrid (với retry)
+    4. Đẩy thông báo SSE lên Frontend
     """
     alarm_data = {
         "type": "revenue_alarm",
@@ -171,18 +183,55 @@ async def _trigger_alarm(
                    f"(Hiện tại: {current_revenue:,.0f} VNĐ, Trước đó: {previous_revenue:,.0f} VNĐ)"
     }
 
-    # 1. Gọi Dify webhook (nếu có cấu hình)
+    # 1. Sinh AI insight về nguyên nhân có thể
+    ai_insight = await _generate_alarm_insight(alarm_data)
+    if ai_insight:
+        alarm_data["ai_insight"] = ai_insight
+
+    # 2. Gọi Dify webhook (nếu có cấu hình)
     natural_message = await _call_dify_alarm_webhook(alarm_data)
     if natural_message:
         alarm_data["natural_message"] = natural_message
 
-    # 2. Gửi email qua SendGrid (nếu có cấu hình)
-    await _send_alarm_email(alarm_data)
+    # 3. Gửi email qua SendGrid (với retry logic)
+    email_sent = await _send_alarm_email_with_retry(alarm_data)
+    alarm_data["email_sent"] = email_sent
 
-    # 3. Đẩy SSE event
+    # 4. Đẩy SSE event
     await _push_sse_alarm(alarm_data)
 
-    logger.info("Alarm triggered and notifications sent")
+    logger.info(f"Alarm triggered - Email: {'sent' if email_sent else 'skipped'}, SSE: pushed")
+
+
+async def _generate_alarm_insight(alarm_data: Dict[str, Any]) -> Optional[str]:
+    """Sinh AI insight về nguyên nhân có thể gây giảm doanh thu."""
+    try:
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+
+        response = await client.chat.completions.create(
+            model="gpt-4.1-nano",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Bạn là chuyên gia phân tích doanh thu. Đưa ra 2-3 nguyên nhân có thể và 1-2 hành động khuyến nghị. Ngắn gọn, chuyên nghiệp, bằng tiếng Việt."
+                },
+                {
+                    "role": "user",
+                    "content": f"Doanh thu giảm {abs(alarm_data['change_pct']):.1f}%. "
+                               f"Hiện tại: {alarm_data['current_revenue']:,.0f} VNĐ, "
+                               f"Trước đó: {alarm_data['previous_revenue']:,.0f} VNĐ. "
+                               f"Mức độ: {alarm_data['severity']}. "
+                               f"Phân tích nguyên nhân có thể và đề xuất hành động."
+                },
+            ],
+            temperature=0.3,
+            max_tokens=300,
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        logger.warning(f"Could not generate AI insight for alarm: {e}")
+        return None
 
 
 async def _call_dify_alarm_webhook(alarm_data: Dict[str, Any]) -> Optional[str]:
@@ -218,48 +267,161 @@ async def _call_dify_alarm_webhook(alarm_data: Dict[str, Any]) -> Optional[str]:
     return None
 
 
-async def _send_alarm_email(alarm_data: Dict[str, Any]):
-    """Gửi email cảnh báo qua SendGrid API."""
+async def _send_alarm_email_with_retry(alarm_data: Dict[str, Any]) -> bool:
+    """
+    Gửi email cảnh báo qua SendGrid API với retry logic.
+    Returns True nếu gửi thành công, False nếu skip hoặc fail.
+    """
     if not SENDGRID_API_KEY:
         logger.info("SendGrid API key not configured, skipping email")
-        return
+        return False
 
-    try:
-        severity_emoji = "🔴" if alarm_data["severity"] == "critical" else "🟡"
-        subject = f"{severity_emoji} Omni-Revenue Alert: Doanh thu giảm {abs(alarm_data['change_pct'])}%"
+    import asyncio
 
-        html_content = f"""
-        <h2>{severity_emoji} Cảnh báo Doanh thu Bất thường</h2>
-        <table border="1" cellpadding="8" cellspacing="0">
-            <tr><td><strong>Thời gian</strong></td><td>{alarm_data['timestamp']}</td></tr>
-            <tr><td><strong>Mức độ</strong></td><td>{alarm_data['severity'].upper()}</td></tr>
-            <tr><td><strong>Doanh thu hiện tại</strong></td><td>{alarm_data['current_revenue']:,.0f} VNĐ</td></tr>
-            <tr><td><strong>Doanh thu trước đó</strong></td><td>{alarm_data['previous_revenue']:,.0f} VNĐ</td></tr>
-            <tr><td><strong>Thay đổi</strong></td><td style="color:red">{alarm_data['change_pct']}%</td></tr>
-        </table>
-        <p>{alarm_data.get('natural_message', alarm_data['message'])}</p>
+    for attempt in range(1, EMAIL_MAX_RETRIES + 1):
+        try:
+            success = await _send_alarm_email(alarm_data)
+            if success:
+                logger.info(f"Alarm email sent successfully (attempt {attempt})")
+                return True
+            else:
+                logger.warning(f"Email send attempt {attempt} failed")
+        except Exception as e:
+            logger.error(f"Email send attempt {attempt} error: {e}")
+
+        if attempt < EMAIL_MAX_RETRIES:
+            await asyncio.sleep(EMAIL_RETRY_DELAY * attempt)
+
+    logger.error(f"Failed to send alarm email after {EMAIL_MAX_RETRIES} attempts")
+    return False
+
+
+async def _send_alarm_email(alarm_data: Dict[str, Any]) -> bool:
+    """Gửi email cảnh báo qua SendGrid API."""
+    severity_emoji = "🔴" if alarm_data["severity"] == "critical" else "🟡"
+    severity_color = "#DC2626" if alarm_data["severity"] == "critical" else "#F59E0B"
+    subject = f"{severity_emoji} Omni-Revenue Alert: Doanh thu giảm {abs(alarm_data['change_pct'])}%"
+
+    # AI insight section
+    ai_insight_html = ""
+    if alarm_data.get("ai_insight"):
+        ai_insight_html = f"""
+        <div style="background: #FEF3C7; border-left: 4px solid #F59E0B; padding: 12px; margin: 16px 0; border-radius: 4px;">
+            <strong>🤖 AI Insight:</strong>
+            <p style="margin: 8px 0 0 0; white-space: pre-wrap;">{alarm_data['ai_insight']}</p>
+        </div>
         """
 
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(
-                "https://api.sendgrid.com/v3/mail/send",
-                json={
-                    "personalizations": [{"to": [{"email": e} for e in ALERT_RECIPIENTS]}],
-                    "from": {"email": SENDGRID_FROM_EMAIL},
-                    "subject": subject,
-                    "content": [{"type": "text/html", "value": html_content}],
-                },
-                headers={
-                    "Authorization": f"Bearer {SENDGRID_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-            )
-            if response.status_code in (200, 202):
-                logger.info("Alarm email sent successfully")
-            else:
-                logger.error(f"SendGrid error: {response.status_code} - {response.text}")
-    except Exception as e:
-        logger.error(f"Email sending error: {e}")
+    # Natural message from Dify
+    natural_msg_html = ""
+    if alarm_data.get("natural_message"):
+        natural_msg_html = f"""
+        <div style="background: #EFF6FF; border-left: 4px solid #3B82F6; padding: 12px; margin: 16px 0; border-radius: 4px;">
+            <strong>💬 Agent Message:</strong>
+            <p style="margin: 8px 0 0 0;">{alarm_data['natural_message']}</p>
+        </div>
+        """
+
+    html_content = f"""
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #fff;">
+        <!-- Header -->
+        <div style="background: {severity_color}; color: white; padding: 20px; border-radius: 8px 8px 0 0;">
+            <h1 style="margin: 0; font-size: 20px;">{severity_emoji} Cảnh báo Doanh thu Bất thường</h1>
+            <p style="margin: 8px 0 0 0; opacity: 0.9; font-size: 14px;">
+                {alarm_data['timestamp'][:19].replace('T', ' ')} UTC
+            </p>
+        </div>
+
+        <!-- Body -->
+        <div style="padding: 24px; border: 1px solid #E5E7EB; border-top: none; border-radius: 0 0 8px 8px;">
+            <!-- KPI Cards -->
+            <div style="display: flex; gap: 12px; margin-bottom: 20px;">
+                <div style="flex: 1; background: #FEF2F2; padding: 16px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 12px; color: #666;">Doanh thu hiện tại</div>
+                    <div style="font-size: 20px; font-weight: bold; color: #DC2626;">
+                        {alarm_data['current_revenue']:,.0f} VNĐ
+                    </div>
+                </div>
+                <div style="flex: 1; background: #F3F4F6; padding: 16px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 12px; color: #666;">Doanh thu trước đó</div>
+                    <div style="font-size: 20px; font-weight: bold; color: #374151;">
+                        {alarm_data['previous_revenue']:,.0f} VNĐ
+                    </div>
+                </div>
+            </div>
+
+            <!-- Change indicator -->
+            <div style="text-align: center; margin: 16px 0;">
+                <span style="background: {severity_color}; color: white; padding: 8px 16px; border-radius: 20px; font-size: 16px; font-weight: bold;">
+                    ↓ {abs(alarm_data['change_pct']):.1f}% giảm
+                </span>
+            </div>
+
+            <!-- Detail table -->
+            <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                <tr style="border-bottom: 1px solid #E5E7EB;">
+                    <td style="padding: 10px; font-weight: bold; color: #374151;">Mức độ</td>
+                    <td style="padding: 10px; color: {severity_color}; font-weight: bold;">
+                        {alarm_data['severity'].upper()}
+                    </td>
+                </tr>
+                <tr style="border-bottom: 1px solid #E5E7EB;">
+                    <td style="padding: 10px; font-weight: bold; color: #374151;">Ngưỡng cảnh báo</td>
+                    <td style="padding: 10px;">{ALARM_THRESHOLD_PCT}%</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #E5E7EB;">
+                    <td style="padding: 10px; font-weight: bold; color: #374151;">Chênh lệch</td>
+                    <td style="padding: 10px; color: red;">
+                        {alarm_data['current_revenue'] - alarm_data['previous_revenue']:,.0f} VNĐ
+                    </td>
+                </tr>
+            </table>
+
+            {ai_insight_html}
+            {natural_msg_html}
+
+            <!-- CTA Button -->
+            <div style="text-align: center; margin: 24px 0;">
+                <a href="{FRONTEND_URL}/dashboard"
+                   style="background: #3B82F6; color: white; padding: 12px 32px; border-radius: 8px;
+                          text-decoration: none; font-weight: bold; display: inline-block;">
+                    📊 Xem Dashboard Chi tiết
+                </a>
+            </div>
+
+            <!-- Message -->
+            <p style="color: #6B7280; font-size: 13px; text-align: center; margin-top: 24px;">
+                {alarm_data.get('natural_message', alarm_data['message'])}
+            </p>
+        </div>
+
+        <!-- Footer -->
+        <div style="text-align: center; padding: 16px; color: #9CA3AF; font-size: 11px;">
+            Omni-Revenue Agent | Automated Alert System<br>
+            <a href="{FRONTEND_URL}" style="color: #6B7280;">Truy cập hệ thống</a>
+        </div>
+    </div>
+    """
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.post(
+            "https://api.sendgrid.com/v3/mail/send",
+            json={
+                "personalizations": [{"to": [{"email": e} for e in ALERT_RECIPIENTS]}],
+                "from": {"email": SENDGRID_FROM_EMAIL, "name": "Omni-Revenue Agent"},
+                "subject": subject,
+                "content": [{"type": "text/html", "value": html_content}],
+            },
+            headers={
+                "Authorization": f"Bearer {SENDGRID_API_KEY}",
+                "Content-Type": "application/json",
+            },
+        )
+        if response.status_code in (200, 202):
+            return True
+        else:
+            logger.error(f"SendGrid error: {response.status_code} - {response.text}")
+            return False
 
 
 async def _push_sse_alarm(alarm_data: Dict[str, Any]):
