@@ -153,6 +153,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       conversationId: null,
       currentStreamContent: "",
       activeChart: null,
+      chartHistory: [],
     }),
 
   // Canvas Actions

@@ -41,3 +41,37 @@
 - [x] Mock việc gọi Dify API để test sinh cấu hình JSON biểu đồ
 - [x] Frontend build thành công không lỗi
 - [x] Backend chạy không lỗi
+
+## Comprehensive System Test (2026-03-21)
+
+### Backend API Tests (15/15 PASS)
+- [x] GET / - Service info endpoint
+- [x] GET /health - Database healthy (REST API mode), Scheduler running
+- [x] GET /docs - Swagger UI accessible
+- [x] POST /api/sql/execute - SQL queries (fact_sales, all views)
+- [x] SQL Injection prevention - DROP/DELETE/UPDATE blocked
+- [x] POST /api/predict/revenue - Revenue predictions (3 months)
+- [x] POST /api/predict/revenue (with insight) - Vietnamese AI insight generation
+- [x] GET /api/predict/health - Predict service healthy
+- [x] POST /api/chat/stream - SSE streaming (start->status->sql->data->chart->insight->done)
+- [x] POST /api/chat/query - Non-streaming chat query
+- [x] GET /api/alarm/stream - SSE alarm stream connection
+- [x] v_monthly_revenue view - 13 months data
+- [x] v_product_performance view - Products ranked by revenue
+- [x] v_customer_segment_revenue view - Segments by region
+- [x] v_daily_revenue view - Daily revenue data
+
+### Frontend UI Tests (10/10 PASS)
+- [x] Page load - 2-column layout (Chat + Canvas)
+- [x] Header - Branding, alarm bell, version indicator
+- [x] Quick suggestion buttons - Fill input on click
+- [x] Chat send - Message sent with typing indicator
+- [x] SSE streaming - Real-time response with status updates
+- [x] Chart rendering - Bar/Line charts render correctly (Recharts)
+- [x] Chart history - Bottom tabs show previous charts, clickable
+- [x] Multiple queries - Consecutive queries all work
+- [x] Clear chat - Resets to welcome screen (+ chart history cleared)
+- [x] Connection status - Green dot shows connected
+
+### Bug Fixes Applied
+- [x] Fixed: clearMessages() now also resets chartHistory[] (was persisting after clear)
