@@ -7,13 +7,15 @@
 {{
     config(
         materialized='table',
-        schema='analytics_mart'
+        schema='analytics_mart',
+        alias='fact_sales'
     )
 }}
 
 WITH raw_sales AS (
     SELECT
         id AS raw_id,
+        data->>'order_id' AS order_id,
         (data->>'order_date')::DATE AS order_date,
         data->'product'->>'name' AS product_name,
         data->'customer'->>'name' AS customer_name,
@@ -40,6 +42,7 @@ customers AS (
 
 SELECT
     ROW_NUMBER() OVER (ORDER BY rs.order_date, rs.raw_id) AS sale_id,
+    rs.order_id,
     rs.order_date,
     p.product_id,
     c.customer_id,

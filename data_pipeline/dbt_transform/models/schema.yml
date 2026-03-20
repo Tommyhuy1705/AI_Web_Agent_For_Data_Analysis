@@ -35,6 +35,11 @@ models:
         tests:
           - unique
           - not_null
+      - name: order_id
+        description: "Business order identifier from raw source"
+        tests:
+          - unique
+          - not_null
       - name: order_date
         description: "Date of the order"
         tests:

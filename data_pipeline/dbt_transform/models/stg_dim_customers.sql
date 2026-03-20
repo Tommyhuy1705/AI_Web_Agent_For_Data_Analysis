@@ -6,7 +6,8 @@
 {{
     config(
         materialized='table',
-        schema='analytics_mart'
+        schema='analytics_mart',
+        alias='dim_customers'
     )
 }}
 

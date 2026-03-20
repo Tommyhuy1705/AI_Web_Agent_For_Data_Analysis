@@ -58,6 +58,50 @@ CUSTOMERS = [
 CHANNELS = ["online", "offline", "marketplace", "social_media"]
 PAYMENT_METHODS = ["credit_card", "bank_transfer", "momo", "zalopay", "cod"]
 
+FORCE_ALARM_DROP = os.getenv("MOCK_FORCE_ALARM_DROP", "true").lower() == "true"
+
+
+def _seasonality_multiplier(order_dt: datetime) -> float:
+    """Seasonality profile for realistic forecasting demos."""
+    month = order_dt.month
+    hour = order_dt.hour
+
+    monthly_boost = {
+        1: 0.90,
+        2: 0.95,
+        3: 1.00,
+        4: 1.02,
+        5: 1.04,
+        6: 1.00,
+        7: 0.98,
+        8: 1.01,
+        9: 1.05,
+        10: 1.10,
+        11: 1.45,  # Black Friday period
+        12: 1.60,  # Holiday peak
+    }
+
+    # Higher conversion in evening shopping windows.
+    if 19 <= hour <= 22:
+        hourly_boost = 1.15
+    elif 8 <= hour <= 11:
+        hourly_boost = 1.05
+    else:
+        hourly_boost = 0.95
+
+    return monthly_boost.get(month, 1.0) * hourly_boost
+
+
+def _should_force_alarm_drop(order_dt: datetime) -> bool:
+    """Lower current-hour revenue to help demo proactive alarm flow."""
+    if not FORCE_ALARM_DROP:
+        return False
+    now = datetime.now()
+    return (
+        order_dt.date() == now.date()
+        and order_dt.hour == now.hour
+    )
+
 
 def generate_mock_sale_record() -> Dict[str, Any]:
     """Sinh một bản ghi bán hàng giả lập dưới dạng JSONB."""
@@ -66,12 +110,34 @@ def generate_mock_sale_record() -> Dict[str, Any]:
     quantity = random.randint(1, 5)
     discount = random.choice([0, 5, 10, 15, 20])
     unit_price = product["price"]
-    total_amount = unit_price * quantity * (1 - discount / 100)
 
-    # Random date trong 12 tháng gần nhất
+    # Random datetime trong 12 tháng gần nhất
     days_ago = random.randint(0, 365)
-    order_date = (datetime.now() - timedelta(days=days_ago)).strftime("%Y-%m-%d")
-    order_time = f"{random.randint(0, 23):02d}:{random.randint(0, 59):02d}:{random.randint(0, 59):02d}"
+    random_time = timedelta(
+        hours=random.randint(0, 23),
+        minutes=random.randint(0, 59),
+        seconds=random.randint(0, 59),
+    )
+    order_dt = (datetime.now() - timedelta(days=days_ago)).replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    ) + random_time
+
+    multiplier = _seasonality_multiplier(order_dt)
+    noise = random.uniform(0.92, 1.12)
+    adjusted_unit_price = unit_price * multiplier * noise
+
+    if _should_force_alarm_drop(order_dt):
+        # Force a clear drop for current-hour alarm demo.
+        adjusted_unit_price *= 0.7
+        quantity = max(1, int(quantity * 0.7))
+
+    total_amount = adjusted_unit_price * quantity * (1 - discount / 100)
+
+    order_date = order_dt.strftime("%Y-%m-%d")
+    order_time = order_dt.strftime("%H:%M:%S")
 
     return {
         "order_id": f"ORD-{random.randint(100000, 999999)}",
@@ -82,7 +148,7 @@ def generate_mock_sale_record() -> Dict[str, Any]:
             "category": product["category"],
             "sub_category": product["sub_category"],
             "brand": product["brand"],
-            "unit_price": unit_price,
+            "unit_price": round(adjusted_unit_price, 2),
         },
         "customer": {
             "name": customer["name"],
@@ -93,7 +159,7 @@ def generate_mock_sale_record() -> Dict[str, Any]:
         },
         "quantity": quantity,
         "discount_pct": discount,
-        "total_amount": total_amount,
+        "total_amount": round(total_amount, 2),
         "channel": random.choice(CHANNELS),
         "payment_method": random.choice(PAYMENT_METHODS),
         "status": random.choice(["completed", "completed", "completed", "pending", "cancelled"]),
