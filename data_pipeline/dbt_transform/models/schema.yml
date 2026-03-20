@@ -1,0 +1,45 @@
+version: 2
+
+models:
+  - name: stg_dim_products
+    description: "Dimension table for products, extracted from raw_staging JSONB data"
+    columns:
+      - name: product_id
+        description: "Unique product identifier"
+        tests:
+          - unique
+          - not_null
+      - name: product_name
+        description: "Product name"
+        tests:
+          - not_null
+
+  - name: stg_dim_customers
+    description: "Dimension table for customers, extracted from raw_staging JSONB data"
+    columns:
+      - name: customer_id
+        description: "Unique customer identifier"
+        tests:
+          - unique
+          - not_null
+      - name: customer_name
+        description: "Customer full name"
+        tests:
+          - not_null
+
+  - name: stg_fact_sales
+    description: "Fact table for sales transactions, joined with dim tables"
+    columns:
+      - name: sale_id
+        description: "Unique sale identifier"
+        tests:
+          - unique
+          - not_null
+      - name: order_date
+        description: "Date of the order"
+        tests:
+          - not_null
+      - name: total_amount
+        description: "Total transaction amount"
+        tests:
+          - not_null

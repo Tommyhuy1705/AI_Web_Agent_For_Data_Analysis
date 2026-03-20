@@ -1,12 +1,12 @@
 # OMNI-REVENUE AGENT - PROJECT CHECKLIST
 
 ## Phase 1: Database & Pipeline Setup
-- [ ] Tạo file `database/supabase_schema.sql` với 3 schema: raw_staging, analytics_mart, system_metrics
-- [ ] Tạo bảng `raw_staging.raw_sales` (JSONB)
-- [ ] Tạo bảng `analytics_mart.fact_sales`, `analytics_mart.dim_products`, `analytics_mart.dim_customers`
-- [ ] Tạo bảng `system_metrics.hourly_snapshot`
-- [ ] Tạo script `data_pipeline/crawler_scripts/mock_data_loader.py` để đổ mock data vào raw_staging
-- [ ] Tạo dbt project `data_pipeline/dbt_transform/` với các model SQL transform JSONB sang analytics_mart
+- [x] Tạo file `database/supabase_schema.sql` với 3 schema: raw_staging, analytics_mart, system_metrics
+- [x] Tạo bảng `raw_staging.raw_sales` (JSONB)
+- [x] Tạo bảng `analytics_mart.fact_sales`, `analytics_mart.dim_products`, `analytics_mart.dim_customers`
+- [x] Tạo bảng `system_metrics.hourly_snapshot`
+- [x] Tạo script `data_pipeline/crawler_scripts/mock_data_loader.py` để đổ mock data vào raw_staging
+- [x] Tạo dbt project `data_pipeline/dbt_transform/` với các model SQL transform JSONB sang analytics_mart
 
 ## Phase 2: Backend Core (FastAPI)
 - [ ] Khởi tạo FastAPI app trong `backend/main.py` với SSE config và APScheduler
