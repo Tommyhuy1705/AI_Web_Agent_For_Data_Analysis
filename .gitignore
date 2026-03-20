@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# Environment files
+.env
+.env.local
+.env.production
+.env.development.local
+
+# Build outputs
+.next/
+out/
+dist/
+build/
+target/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# dbt
+data_pipeline/dbt_transform/target/
+data_pipeline/dbt_transform/dbt_packages/
+data_pipeline/dbt_transform/logs/
+
+# Testing
+coverage/
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Misc
+*.egg-info/
+.eggs/

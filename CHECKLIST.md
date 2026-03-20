@@ -9,14 +9,14 @@
 - [x] Tạo dbt project `data_pipeline/dbt_transform/` với các model SQL transform JSONB sang analytics_mart
 
 ## Phase 2: Backend Core (FastAPI)
-- [ ] Khởi tạo FastAPI app trong `backend/main.py` với SSE config và APScheduler
-- [ ] Viết `backend/services/db_executor.py` - kết nối Supabase qua asyncpg
-- [ ] Viết `backend/api/routes/sql_proxy.py` - endpoint chạy SQL an toàn (chỉ SELECT)
-- [ ] Viết `backend/api/routes/chat_router.py` - nhận text, gọi Dify API, stream SSE
-- [ ] Viết `backend/services/alarm_monitor.py` - logic so sánh snapshot 1h
-- [ ] Viết `backend/services/manus_visualizer.py` - sinh cấu hình JSON biểu đồ
-- [ ] Cài đặt APScheduler cron job cho Proactive Alarm (mỗi 60 phút)
-- [ ] Tạo file `backend/requirements.txt`
+- [x] Khởi tạo FastAPI app trong `backend/main.py` với SSE config và APScheduler
+- [x] Viết `backend/services/db_executor.py` - kết nối Supabase qua asyncpg
+- [x] Viết `backend/api/routes/sql_proxy.py` - endpoint chạy SQL an toàn (chỉ SELECT)
+- [x] Viết `backend/api/routes/chat_router.py` - nhận text, gọi Dify API, stream SSE
+- [x] Viết `backend/services/alarm_monitor.py` - logic so sánh snapshot 1h
+- [x] Viết `backend/services/manus_visualizer.py` - sinh cấu hình JSON biểu đồ
+- [x] Cài đặt APScheduler cron job cho Proactive Alarm (mỗi 60 phút)
+- [x] Tạo file `backend/requirements.txt`
 
 ## Phase 3: Frontend Chat & Canvas (Next.js)
 - [ ] Khởi tạo Next.js 14+ App Router project trong `frontend/`

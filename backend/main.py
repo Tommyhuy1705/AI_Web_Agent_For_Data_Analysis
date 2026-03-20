@@ -1,0 +1,198 @@
+"""
+Omni-Revenue Agent - Backend Main Application
+FastAPI App with SSE config, APScheduler for Proactive Alarm,
+and CORS configuration for Next.js frontend.
+"""
+
+import asyncio
+import logging
+import os
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.interval import IntervalTrigger
+
+from backend.api.routes.chat_router import router as chat_router
+from backend.api.routes.sql_proxy import router as sql_router
+from backend.services.db_executor import get_pool, close_pool
+from backend.services.alarm_monitor import (
+    check_hourly_revenue_alarm,
+    set_alarm_event_queue,
+)
+
+# ============================================================
+# Logging Configuration
+# ============================================================
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(__name__)
+
+# ============================================================
+# APScheduler Configuration
+# ============================================================
+scheduler = AsyncIOScheduler()
+
+# SSE Event Queue cho alarm notifications
+alarm_event_queue = asyncio.Queue()
+
+
+# ============================================================
+# Application Lifespan
+# ============================================================
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application startup and shutdown events."""
+    # Startup
+    logger.info("=" * 60)
+    logger.info("OMNI-REVENUE AGENT - Backend Starting...")
+    logger.info("=" * 60)
+
+    # Initialize database connection pool
+    try:
+        pool = await get_pool()
+        logger.info("Database connection pool initialized")
+    except Exception as e:
+        logger.warning(f"Database connection failed (will retry on demand): {e}")
+
+    # Set alarm event queue
+    set_alarm_event_queue(alarm_event_queue)
+
+    # Start APScheduler - Proactive Alarm mỗi 60 phút
+    scheduler.add_job(
+        check_hourly_revenue_alarm,
+        trigger=IntervalTrigger(minutes=60),
+        id="hourly_alarm_check",
+        name="Hourly Revenue Alarm Check",
+        replace_existing=True,
+    )
+    scheduler.start()
+    logger.info("APScheduler started - Hourly alarm check enabled")
+
+    yield
+
+    # Shutdown
+    logger.info("Shutting down...")
+    scheduler.shutdown(wait=False)
+    await close_pool()
+    logger.info("Backend shutdown complete")
+
+
+# ============================================================
+# FastAPI App
+# ============================================================
+app = FastAPI(
+    title="Omni-Revenue Agent API",
+    description="AI Web Agent for Enterprise Data Analysis - Backend API",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+# ============================================================
+# CORS Middleware (cho Next.js Frontend)
+# ============================================================
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+ALLOWED_ORIGINS = [
+    FRONTEND_URL,
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3000",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
+
+# ============================================================
+# Include Routers
+# ============================================================
+app.include_router(chat_router)
+app.include_router(sql_router)
+
+
+# ============================================================
+# Root & Health Endpoints
+# ============================================================
+@app.get("/")
+async def root():
+    """Root endpoint."""
+    return {
+        "service": "Omni-Revenue Agent API",
+        "version": "1.0.0",
+        "status": "running",
+        "docs": "/docs",
+    }
+
+
+@app.get("/health")
+async def health():
+    """Health check endpoint."""
+    from backend.services.db_executor import health_check
+    db_status = await health_check()
+    return {
+        "status": "healthy",
+        "database": db_status,
+        "scheduler": {
+            "running": scheduler.running,
+            "jobs": len(scheduler.get_jobs()),
+        },
+    }
+
+
+@app.get("/api/alarm/stream")
+async def alarm_stream():
+    """
+    SSE endpoint cho alarm notifications.
+    Frontend subscribe để nhận cảnh báo real-time.
+    """
+    from fastapi.responses import StreamingResponse
+    import json
+
+    async def event_generator():
+        while True:
+            try:
+                # Wait for alarm events (timeout 30s để keep-alive)
+                event = await asyncio.wait_for(
+                    alarm_event_queue.get(), timeout=30
+                )
+                yield f"event: {event['event']}\ndata: {event['data']}\n\n"
+            except asyncio.TimeoutError:
+                # Send keep-alive ping
+                yield f"event: ping\ndata: {json.dumps({'status': 'alive'})}\n\n"
+            except Exception as e:
+                logger.error(f"Alarm stream error: {e}")
+                break
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ============================================================
+# Run with uvicorn
+# ============================================================
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        "backend.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        log_level="info",
+    )
