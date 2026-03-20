@@ -1,0 +1,108 @@
+/**
+ * Main Page - Omni-Revenue Agent
+ * UI chia 2 cột: Chat (trái) & Canvas/Dashboard (phải)
+ */
+
+"use client";
+
+import { useEffect } from "react";
+import ChatInterface from "@/components/agent/ChatInterface";
+import DynamicChart from "@/components/visualizations/DynamicChart";
+import { useAgentStore } from "@/store/useAgentStore";
+import { useAgentStream } from "@/hooks/useAgentStream";
+import { Bell, Activity, TrendingUp } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+export default function Home() {
+  const { alarms, unreadAlarmCount, activeChart, markAlarmRead } =
+    useAgentStore();
+  const { subscribeAlarms, unsubscribeAlarms } = useAgentStream();
+
+  // Subscribe to alarm stream on mount
+  useEffect(() => {
+    subscribeAlarms();
+    return () => unsubscribeAlarms();
+  }, []);
+
+  return (
+    <div className="flex flex-col h-screen bg-background">
+      {/* Top Navigation Bar */}
+      <header className="flex items-center justify-between px-6 py-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="flex items-center gap-3">
+          <Activity className="w-5 h-5 text-primary" />
+          <h1 className="text-base font-bold">Omni-Revenue Agent</h1>
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+            Enterprise AI
+          </span>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {/* Alarm Bell */}
+          <div className="relative">
+            <button className="p-2 rounded-lg hover:bg-muted relative">
+              <Bell className="w-4 h-4" />
+              {unreadAlarmCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-destructive text-destructive-foreground text-[9px] flex items-center justify-center">
+                  {unreadAlarmCount}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* Status indicator */}
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <TrendingUp className="w-3 h-3" />
+            <span>v1.0.0</span>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content - 2 Column Layout */}
+      <main className="flex-1 flex min-h-0">
+        {/* Left Column: Chat Interface */}
+        <div className="w-[420px] min-w-[360px] border-r flex flex-col">
+          <ChatInterface />
+        </div>
+
+        {/* Right Column: Canvas / Dashboard */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Canvas Area */}
+          <div className="flex-1 min-h-0">
+            <DynamicChart />
+          </div>
+
+          {/* Alarm Bar (if any) */}
+          {alarms.length > 0 && (
+            <div className="border-t max-h-32 overflow-y-auto">
+              {alarms.slice(0, 3).map((alarm) => (
+                <div
+                  key={alarm.id}
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-2 text-xs border-b last:border-b-0 cursor-pointer hover:bg-muted/50",
+                    !alarm.read && "bg-destructive/5"
+                  )}
+                  onClick={() => markAlarmRead(alarm.id)}
+                >
+                  <span
+                    className={cn(
+                      "w-2 h-2 rounded-full flex-shrink-0",
+                      alarm.severity === "critical"
+                        ? "bg-red-500"
+                        : "bg-yellow-500"
+                    )}
+                  />
+                  <span className="flex-1 truncate">
+                    {alarm.naturalMessage || alarm.message}
+                  </span>
+                  <span className="text-muted-foreground flex-shrink-0">
+                    {new Date(alarm.timestamp).toLocaleTimeString("vi-VN")}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}

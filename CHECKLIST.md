@@ -19,14 +19,14 @@
 - [x] Tạo file `backend/requirements.txt`
 
 ## Phase 3: Frontend Chat & Canvas (Next.js)
-- [ ] Khởi tạo Next.js 14+ App Router project trong `frontend/`
-- [ ] Cài đặt Tailwind CSS, Zustand, Recharts/Echarts, Shadcn UI
-- [ ] Viết `frontend/app/page.tsx` - UI chia 2 cột (Chat & Canvas)
-- [ ] Viết `frontend/app/api/chat/route.ts` - xử lý SSE Streaming
-- [ ] Viết `frontend/components/agent/ChatInterface.tsx`
-- [ ] Viết `frontend/components/visualizations/DynamicChart.tsx` - render JSON thành Echarts
-- [ ] Viết `frontend/store/useAgentStore.ts` - Zustand state management
-- [ ] Viết `frontend/hooks/useAgentStream.ts` - xử lý kết nối SSE
+- [x] Khởi tạo Next.js 14+ App Router project trong `frontend/`
+- [x] Cài đặt Tailwind CSS, Zustand, Recharts/Echarts, Shadcn UI
+- [x] Viết `frontend/app/page.tsx` - UI chia 2 cột (Chat & Canvas)
+- [x] Viết `frontend/app/api/chat/route.ts` - xử lý SSE Streaming
+- [x] Viết `frontend/components/agent/ChatInterface.tsx`
+- [x] Viết `frontend/components/visualizations/DynamicChart.tsx` - render JSON thành Echarts
+- [x] Viết `frontend/store/useAgentStore.ts` - Zustand state management
+- [x] Viết `frontend/hooks/useAgentStream.ts` - xử lý kết nối SSE
 
 ## Phase 4: AI & Services Integration
 - [ ] Viết `backend/ml_models/time_series.py` - module dự đoán dùng Scikit-learn/Prophet
