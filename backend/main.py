@@ -23,6 +23,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.cron import CronTrigger
 
 from backend.api.routes.chat_router import router as chat_router
 from backend.api.routes.sql_proxy import router as sql_router
@@ -33,6 +34,7 @@ from backend.services.alarm_monitor import (
     check_hourly_revenue_alarm,
     set_alarm_event_queue,
 )
+from backend.services.dbt_runner import daily_dbt_run
 
 # ============================================================
 # Logging Configuration
@@ -82,8 +84,18 @@ async def lifespan(app: FastAPI):
         name="Hourly Revenue Alarm Check",
         replace_existing=True,
     )
+
+    # dbt run cron job - mỗi ngày lúc 00:00 UTC
+    scheduler.add_job(
+        daily_dbt_run,
+        trigger=CronTrigger(hour=0, minute=0),
+        id="daily_dbt_run",
+        name="Daily dbt Run (midnight)",
+        replace_existing=True,
+    )
+
     scheduler.start()
-    logger.info("APScheduler started - Hourly alarm check enabled")
+    logger.info("APScheduler started - Hourly alarm check + Daily dbt run enabled")
 
     yield
 
