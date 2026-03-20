@@ -154,6 +154,9 @@ Truy cập: `http://localhost:3000`
 
 | Variable | Mô tả |
 |----------|-------|
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_ANON_KEY` | Supabase anon public key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server-side only) |
 | `SUPABASE_DATABASE_URL` | PostgreSQL connection string |
 | `DIFY_API_URL` | Dify API base URL |
 | `DIFY_API_KEY` | Dify API key |
@@ -162,6 +165,8 @@ Truy cập: `http://localhost:3000`
 | `ZILLIZ_API_KEY` | Zilliz API key |
 | `SENDGRID_API_KEY` | SendGrid email API key |
 | `FRONTEND_URL` | Frontend URL for CORS |
+
+Lưu ý: endpoint `/api/sql/execute` đang dùng asyncpg nên vẫn cần `SUPABASE_DATABASE_URL` (hoặc bộ `SUPABASE_DB_HOST/USER/PASSWORD/NAME`) để truy vấn SQL read-only trực tiếp.
 
 ### Frontend (.env.local)
 

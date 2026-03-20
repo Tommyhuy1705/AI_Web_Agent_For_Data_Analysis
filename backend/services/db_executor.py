@@ -16,11 +16,36 @@ logger = logging.getLogger(__name__)
 DEFAULT_MAX_ROWS = int(os.getenv("SQL_PROXY_MAX_ROWS", "1000"))
 MAX_SQL_LENGTH = int(os.getenv("SQL_PROXY_MAX_SQL_LENGTH", "20000"))
 
-# Supabase connection string
-DATABASE_URL = os.getenv(
-    "SUPABASE_DATABASE_URL",
-    "postgresql://postgres:your_password@db.your_project.supabase.co:5432/postgres"
-)
+# Supabase API credentials (for alignment with Supabase best practices)
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+
+
+def _resolve_database_url() -> str:
+    """Resolve direct PostgreSQL URL required by asyncpg SQL proxy."""
+    direct_url = os.getenv("SUPABASE_DATABASE_URL", "").strip()
+    if direct_url:
+        return direct_url
+
+    host = os.getenv("SUPABASE_DB_HOST", "").strip()
+    user = os.getenv("SUPABASE_DB_USER", "").strip()
+    password = os.getenv("SUPABASE_DB_PASSWORD", "").strip()
+    dbname = os.getenv("SUPABASE_DB_NAME", "postgres").strip() or "postgres"
+    if host and user and password:
+        return f"postgresql://{user}:{password}@{host}:5432/{dbname}"
+
+    # NOTE: URL/key auth alone cannot execute arbitrary SQL through asyncpg.
+    if SUPABASE_URL and (SUPABASE_ANON_KEY or SUPABASE_SERVICE_ROLE_KEY):
+        raise RuntimeError(
+            "SUPABASE_URL/KEYs are configured but SUPABASE_DATABASE_URL is missing. "
+            "SQL Proxy requires direct Postgres connection string."
+        )
+
+    return "postgresql://postgres:your_password@db.your_project.supabase.co:5432/postgres"
+
+
+DATABASE_URL = _resolve_database_url()
 
 # Global connection pool
 _pool: Optional[asyncpg.Pool] = None
