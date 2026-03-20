@@ -26,9 +26,9 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="flex flex-col h-screen bg-background">
+    <div className="flex flex-col h-full bg-background overflow-hidden">
       {/* Top Navigation Bar */}
-      <header className="flex items-center justify-between px-6 py-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <header className="flex-shrink-0 flex items-center justify-between px-6 py-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex items-center gap-3">
           <Activity className="w-5 h-5 text-primary" />
           <h1 className="text-base font-bold">Omni-Revenue Agent</h1>
@@ -68,9 +68,9 @@ export default function Home() {
       </header>
 
       {/* Main Content - 2 Column Layout */}
-      <main className="flex-1 flex min-h-0">
+      <main className="flex-1 flex min-h-0 overflow-hidden">
         {/* Left Column: Chat Interface */}
-        <div className="w-[420px] min-w-[360px] border-r flex flex-col">
+        <div className="w-[420px] min-w-[360px] border-r flex flex-col h-full overflow-hidden">
           <ChatInterface />
         </div>
 

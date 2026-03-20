@@ -49,6 +49,17 @@
   * {
     @apply border-border;
   }
+  html, body {
+    height: 100dvh;
+    height: 100vh; /* fallback */
+    max-height: 100dvh;
+    max-height: 100vh; /* fallback */
+    overflow: hidden;
+  }
+  #__next {
+    height: 100%;
+    overflow: hidden;
+  }
   body {
     @apply bg-background text-foreground;
   }

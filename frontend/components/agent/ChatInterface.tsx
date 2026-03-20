@@ -135,9 +135,9 @@ export default function ChatInterface() {
   ];
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex flex-col h-full bg-background overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b">
+      <div className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0">
         <div className="flex items-center gap-2">
           <Bot className="w-5 h-5 text-primary" />
           <h2 className="font-semibold text-sm">Omni-Revenue Agent</h2>
@@ -162,7 +162,7 @@ export default function ChatInterface() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 min-h-0">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <Bot className="w-12 h-12 text-muted-foreground mb-4" />
@@ -270,36 +270,36 @@ export default function ChatInterface() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
-      <div className="border-t px-4 py-3">
+      {/* Input Area - Always visible at bottom */}
+      <div className="border-t px-4 py-4 flex-shrink-0 bg-background shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
         <form onSubmit={handleSubmit} className="flex items-end gap-2">
           <textarea
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Hỏi về dữ liệu doanh thu..."
-            rows={1}
-            className="flex-1 resize-none rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 bg-background min-h-[40px] max-h-[120px]"
+            placeholder="💬 Nhập câu hỏi về doanh thu tại đây..."
+            rows={2}
+            className="flex-1 resize-none rounded-xl border-2 border-primary/20 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/40 bg-muted/30 min-h-[52px] max-h-[120px] placeholder:text-muted-foreground/60"
             disabled={isLoading}
           />
           {isStreaming ? (
             <button
               type="button"
               onClick={cancelStream}
-              className="p-2 rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="p-3 rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
               title="Dừng"
             >
-              <Square className="w-4 h-4" />
+              <Square className="w-5 h-5" />
             </button>
           ) : (
             <button
               type="submit"
               disabled={!input.trim() || isLoading}
-              className="p-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-3 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               title="Gửi"
             >
-              <Send className="w-4 h-4" />
+              <Send className="w-5 h-5" />
             </button>
           )}
         </form>

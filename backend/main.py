@@ -137,10 +137,12 @@ ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
 ]
 
+# In development/demo, allow all origins for cross-domain access
+# In production, restrict to specific domains
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],

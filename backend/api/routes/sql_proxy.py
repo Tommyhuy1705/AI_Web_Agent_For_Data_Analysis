@@ -14,7 +14,6 @@ from pydantic import BaseModel, Field
 from backend.services.db_executor import (
     execute_safe_query,
     health_check,
-    prepare_safe_select_query,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,9 +52,8 @@ async def execute_sql(request: SQLExecuteRequest):
     logger.info(f"SQL Proxy request: {request.sql[:100]}...")
 
     try:
-        safe_sql = prepare_safe_select_query(request.sql)
         data = await execute_safe_query(
-            sql=safe_sql,
+            sql=request.sql,
             params=request.params,
             timeout=request.timeout,
         )
@@ -69,7 +67,7 @@ async def execute_sql(request: SQLExecuteRequest):
             success=True,
             data=serialized_data,
             row_count=len(serialized_data),
-            executed_sql=safe_sql,
+            executed_sql=request.sql,
         )
 
     except ValueError as e:
