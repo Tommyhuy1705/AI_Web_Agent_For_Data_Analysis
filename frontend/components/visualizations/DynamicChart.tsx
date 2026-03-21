@@ -2,11 +2,12 @@
  * DynamicChart Component
  * Nhận JSON config, tự động render thành biểu đồ tương tác.
  * Hỗ trợ: bar, line, pie, area, scatter, composed, table.
+ * Có toggle button để chuyển đổi giữa Chart view và Data Table view.
  */
 
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import {
   BarChart,
   Bar,
@@ -47,7 +48,10 @@ export default function DynamicChart({ config: propConfig }: DynamicChartProps) 
   const parsedConfig = rawConfig ? chartConfigSchema.safeParse(rawConfig) : null;
   const config = parsedConfig?.success ? (parsedConfig.data as ChartConfig) : null;
 
-  // Format number for tooltips
+  // Toggle state: "chart" or "table"
+  const [viewMode, setViewMode] = useState<"chart" | "table">("chart");
+
+  // Format number for tooltips and table
   const formatNumber = (value: number) => {
     if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`;
     if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
@@ -70,6 +74,60 @@ export default function DynamicChart({ config: propConfig }: DynamicChartProps) 
       </div>
     );
   };
+
+  // Render data table view
+  const renderDataTable = useMemo(() => {
+    if (!config || !config.data?.length) return null;
+
+    const data = config.data;
+    const columns = Object.keys(data[0]);
+
+    return (
+      <div className="overflow-auto h-full">
+        <table className="w-full text-xs border-collapse">
+          <thead className="sticky top-0 z-10">
+            <tr className="bg-muted">
+              <th className="px-3 py-2 text-left font-medium border-b text-muted-foreground w-10">
+                #
+              </th>
+              {columns.map((col: string) => (
+                <th
+                  key={col}
+                  className="px-3 py-2 text-left font-medium border-b text-muted-foreground"
+                >
+                  {col.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {data.slice(0, 200).map((row: any, i: number) => (
+              <tr
+                key={i}
+                className="hover:bg-muted/50 transition-colors"
+              >
+                <td className="px-3 py-1.5 border-b text-muted-foreground">
+                  {i + 1}
+                </td>
+                {columns.map((col: string) => (
+                  <td key={col} className="px-3 py-1.5 border-b">
+                    {typeof row[col] === "number"
+                      ? formatNumber(row[col])
+                      : String(row[col] ?? "")}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {data.length > 200 && (
+          <div className="text-center text-xs text-muted-foreground py-2">
+            Hiển thị 200/{data.length} dòng
+          </div>
+        )}
+      </div>
+    );
+  }, [config]);
 
   // Render chart based on type
   const renderChart = useMemo(() => {
@@ -296,15 +354,41 @@ export default function DynamicChart({ config: propConfig }: DynamicChartProps) 
       {/* Chart Header */}
       {config && config.data?.length > 0 && (
         <div className="flex items-center justify-between px-4 py-2 border-b">
-          <div>
-            <h3 className="text-sm font-medium">{config.title}</h3>
+          <div className="flex-1 min-w-0 mr-2">
+            <h3 className="text-sm font-medium truncate">{config.title}</h3>
             {config.description && (
-              <p className="text-xs text-muted-foreground">{config.description}</p>
+              <p className="text-xs text-muted-foreground truncate">{config.description}</p>
             )}
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {/* Chart/Table Toggle Buttons */}
+            <div className="flex items-center bg-muted rounded-md p-0.5 mr-1">
+              <button
+                onClick={() => setViewMode("chart")}
+                className={`p-1.5 rounded transition-all ${
+                  viewMode === "chart"
+                    ? "bg-background shadow-sm text-primary"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                title="Xem biểu đồ"
+              >
+                <BarChart3 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => setViewMode("table")}
+                className={`p-1.5 rounded transition-all ${
+                  viewMode === "table"
+                    ? "bg-background shadow-sm text-primary"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                title="Xem bảng dữ liệu"
+              >
+                <Table className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-              {config.chart_type}
+              {viewMode === "table" ? `${config.data.length} dòng` : config.chart_type}
             </span>
             <button
               onClick={() => setActiveChart(null)}
@@ -316,8 +400,12 @@ export default function DynamicChart({ config: propConfig }: DynamicChartProps) 
         </div>
       )}
 
-      {/* Chart Area */}
-      <div className="flex-1 p-4 min-h-0">{renderChart}</div>
+      {/* Chart or Table Area */}
+      <div className="flex-1 p-4 min-h-0">
+        {viewMode === "table" && config && config.data?.length > 0
+          ? renderDataTable
+          : renderChart}
+      </div>
 
       {/* Chart History */}
       {chartHistory.length > 1 && (
@@ -327,7 +415,10 @@ export default function DynamicChart({ config: propConfig }: DynamicChartProps) 
             {chartHistory.slice(-5).map((chart, i) => (
               <button
                 key={i}
-                onClick={() => setActiveChart(chart)}
+                onClick={() => {
+                  setActiveChart(chart);
+                  setViewMode("chart");
+                }}
                 className="text-[10px] px-2 py-1 rounded bg-muted hover:bg-muted/80 whitespace-nowrap"
               >
                 {chart.title?.slice(0, 20) || `Chart ${i + 1}`}
