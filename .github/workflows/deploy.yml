@@ -171,7 +171,11 @@ jobs:
                 exit 1
               fi
               BACKEND_ENV_DECODE_INPUT="$(printf '%s' "$BACKEND_ENV_CLEAN" | tr '_-' '/+')"
-              ENV_TMP_DIR="$(mktemp -d -t backend-env.XXXXXX)" || { echo "❌ Unable to create temp directory for env payload." >&2; exit 1; }
+              ENV_TMP_DIR="$(mktemp -d -t backend-env.XXXXXX)"
+              if [ -z "$ENV_TMP_DIR" ] || [ ! -d "$ENV_TMP_DIR" ]; then
+                echo "❌ Unable to create temp directory for env payload." >&2
+                exit 1
+              fi
               chmod 700 "$ENV_TMP_DIR"
               TMP_ENV_FILE="$ENV_TMP_DIR/env"
               TMP_ENV_ERR="$ENV_TMP_DIR/err"
@@ -197,8 +201,7 @@ jobs:
               if [ -f "$BACKEND_ENV_TEMPLATE" ]; then
                 cp "$BACKEND_ENV_TEMPLATE" "$BACKEND_ENV_FILE"
                 chmod 600 "$BACKEND_ENV_FILE"
-                echo "ℹ️ Template copied to /opt/sia/.env.backend."
-                echo "❌ Production deploys require the BACKEND_ENV_BASE64 secret with real values. Set it and re-run the workflow." >&2
+                echo "❌ Backend env file missing. Template copied to /opt/sia/.env.backend, but production deploys require the BACKEND_ENV_BASE64 secret with real values. Set it and re-run the workflow." >&2
                 exit 1
               else
                 echo "❌ Missing backend env file and no template available. Aborting deploy." >&2
