@@ -2,6 +2,7 @@
  * Zustand Store - Agent State Management
  * Quản lý state cho chat messages, charts, alarms, và loading states.
  * Hỗ trợ multi-chart cho dashboard mode.
+ * v2: Thêm Chat History & Context Memory (session_id, chatSessions)
  */
 
 import { create } from "zustand";
@@ -55,6 +56,16 @@ export interface AlarmEvent {
   read: boolean;
 }
 
+export interface ChatSession {
+  session_id: string;
+  user_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+  is_active: boolean;
+}
+
 // ============================================================
 // Store Interface
 // ============================================================
@@ -66,6 +77,11 @@ interface AgentStore {
   isLoading: boolean;
   isStreaming: boolean;
   currentStreamContent: string;
+
+  // Session State (Chat History)
+  sessionId: string | null;
+  chatSessions: ChatSession[];
+  isLoadingSessions: boolean;
 
   // Canvas State (biểu đồ hiện tại)
   activeChart: ChartConfig | null;
@@ -88,6 +104,15 @@ interface AgentStore {
   setCurrentStreamContent: (content: string) => void;
   appendStreamContent: (chunk: string) => void;
   clearMessages: () => void;
+
+  // Actions - Session (New Chat & History)
+  setSessionId: (id: string | null) => void;
+  startNewChat: () => void;
+  setChatSessions: (sessions: ChatSession[]) => void;
+  addChatSession: (session: ChatSession) => void;
+  removeChatSession: (sessionId: string) => void;
+  loadSession: (session: ChatSession, messages: ChatMessage[]) => void;
+  setLoadingSessions: (loading: boolean) => void;
 
   // Actions - Canvas
   setActiveChart: (chart: ChartConfig | null) => void;
@@ -114,6 +139,11 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   isLoading: false,
   isStreaming: false,
   currentStreamContent: "",
+
+  // Session State
+  sessionId: null,
+  chatSessions: [],
+  isLoadingSessions: false,
 
   activeChart: null,
   chartHistory: [],
@@ -160,6 +190,57 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       activeChart: null,
       chartHistory: [],
     }),
+
+  // Session Actions
+  setSessionId: (id) => set({ sessionId: id }),
+
+  /**
+   * startNewChat: Reset toàn bộ workspace về trạng thái ban đầu.
+   * Được gọi khi user nhấn nút "New Chat".
+   */
+  startNewChat: () =>
+    set({
+      messages: [],
+      conversationId: null,
+      sessionId: null,
+      currentStreamContent: "",
+      activeChart: null,
+      chartHistory: [],
+      isLoading: false,
+      isStreaming: false,
+      statusMessage: "",
+    }),
+
+  setChatSessions: (sessions) => set({ chatSessions: sessions }),
+
+  addChatSession: (session) =>
+    set((state) => ({
+      chatSessions: [session, ...state.chatSessions],
+    })),
+
+  removeChatSession: (sessionId) =>
+    set((state) => ({
+      chatSessions: state.chatSessions.filter((s) => s.session_id !== sessionId),
+    })),
+
+  /**
+   * loadSession: Load lại một session cũ từ lịch sử.
+   * Reset workspace và điền messages từ session đã chọn.
+   */
+  loadSession: (session, messages) =>
+    set({
+      sessionId: session.session_id,
+      conversationId: null,
+      messages,
+      currentStreamContent: "",
+      activeChart: null,
+      chartHistory: [],
+      isLoading: false,
+      isStreaming: false,
+      statusMessage: "",
+    }),
+
+  setLoadingSessions: (loading) => set({ isLoadingSessions: loading }),
 
   // Canvas Actions
   setActiveChart: (chart) =>
