@@ -33,9 +33,11 @@ from backend.api.routes.sql_proxy import router as sql_router
 from backend.api.routes.predict_router import router as predict_router
 from backend.api.routes.dashboard_router import router as dashboard_router
 from backend.api.routes.market_intel_router import router as market_intel_router
+from backend.api.routes.chat_history_router import router as chat_history_router
 from backend.services.db_executor import get_pool, close_pool
 from backend.services.alarm_monitor import (
     check_hourly_revenue_alarm,
+    check_smart_alarm_morning,
     set_alarm_event_queue,
 )
 from backend.services.dbt_runner import daily_dbt_run
@@ -82,14 +84,29 @@ async def lifespan(app: FastAPI):
     # Set alarm event queue
     set_alarm_event_queue(alarm_event_queue)
 
-    # Start APScheduler - Proactive Alarm mỗi 60 phút
+    # ── Smart Alarm: 08:00 sáng mỗi ngày (Asia/Ho_Chi_Minh) ──────────────────
+    # So sánh doanh thu cửa sổ 18:00 hôm trước → 08:00 hôm nay vs baseline 7 ngày
+    # Chỉ cảnh báo khi biến động vượt ngưỡng ±15%
     scheduler.add_job(
-        check_hourly_revenue_alarm,
-        trigger=IntervalTrigger(minutes=60),
-        id="hourly_alarm_check",
-        name="Hourly Revenue Alarm Check",
+        check_smart_alarm_morning,
+        trigger=CronTrigger(hour=8, minute=0, timezone="Asia/Ho_Chi_Minh"),
+        id="smart_alarm_morning",
+        name="Smart Alarm Morning Check (08:00 ICT)",
         replace_existing=True,
     )
+
+    # ── Scheduled Dashboard Cache: 07:00, 10:00, 13:00, 16:00 (ICT) ──────────────
+    # Build và cache toàn bộ dashboard data vào các mốc giờ cố định
+    from backend.services.dashboard_cache_service import build_and_cache_dashboard
+    for _slot_hour in [7, 10, 13, 16]:
+        scheduler.add_job(
+            build_and_cache_dashboard,
+            trigger=CronTrigger(hour=_slot_hour, minute=0, timezone="Asia/Ho_Chi_Minh"),
+            id=f"dashboard_cache_{_slot_hour:02d}00",
+            name=f"Dashboard Cache Refresh ({_slot_hour:02d}:00 ICT)",
+            replace_existing=True,
+        )
+    logger.info("Dashboard cache scheduled at 07:00, 10:00, 13:00, 16:00 ICT")
 
     # dbt run - TEST MODE: chạy mỗi 2 phút (đổi lại CronTrigger(hour=0, minute=0) sau khi test)
     scheduler.add_job(
@@ -124,7 +141,7 @@ async def lifespan(app: FastAPI):
         logger.info("TinyFish not configured - market crawl disabled")
 
     scheduler.start()
-    logger.info("APScheduler started - Hourly alarm + Daily dbt + Monthly report + Market Intel enabled")
+    logger.info("APScheduler started - Smart Alarm (08:00) + Dashboard Cache (07/10/13/16h) + dbt + Monthly report + Market Intel enabled")
 
     yield
 
@@ -175,6 +192,7 @@ app.include_router(sql_router)
 app.include_router(predict_router)
 app.include_router(dashboard_router)
 app.include_router(market_intel_router)
+app.include_router(chat_history_router)
 
 
 # ============================================================
