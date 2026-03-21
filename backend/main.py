@@ -35,6 +35,7 @@ from backend.api.routes.dashboard_router import router as dashboard_router  # no
 from backend.api.routes.market_intel_router import router as market_intel_router  # noqa: E402
 from backend.api.routes.chat_history_router import router as chat_history_router  # noqa: E402
 from backend.api.routes.audio_router import router as audio_router  # noqa: E402
+from backend.api.routes.diagnostics_router import router as diagnostics_router  # noqa: E402
 from backend.services.db_executor import get_pool, close_pool  # noqa: E402
 from backend.services.alarm_monitor import (  # noqa: E402
     check_smart_alarm_morning,
@@ -194,6 +195,7 @@ app.include_router(dashboard_router)
 app.include_router(market_intel_router)
 app.include_router(chat_history_router)
 app.include_router(audio_router)
+app.include_router(diagnostics_router)
 
 
 # ============================================================
