@@ -27,3 +27,10 @@ sse-starlette>=2.1.0
 
 # Market Intelligence (TinyFish/AgentQL)
 tinyfish>=0.1.0
+playwright>=1.44.0
+
+# Market Intelligence (Exa - Qualitative News Search)
+exa-py>=1.0.0
+
+# Audio (ElevenLabs TTS)
+elevenlabs>=1.0.0
