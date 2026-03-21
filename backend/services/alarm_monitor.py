@@ -100,12 +100,12 @@ async def check_hourly_revenue_alarm():
 
 
 async def _get_current_hour_revenue() -> Optional[float]:
-    """Query tổng doanh thu trong ngày hôm nay từ fact_sales (public schema)."""
+    """Query tổng doanh thu trong 1 giờ gần nhất từ fact_sales (public schema)."""
     try:
         result = await fetch_one("""
             SELECT COALESCE(SUM(total_amount), 0) as total_revenue
             FROM fact_sales
-            WHERE order_date = CURRENT_DATE
+            WHERE created_at >= NOW() - INTERVAL '1 hour'
         """)
         return float(result["total_revenue"]) if result else None
     except Exception as e:
