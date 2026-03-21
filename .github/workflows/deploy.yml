@@ -29,6 +29,7 @@ env:
   ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
   BACKEND_IMAGE: sia-backend
   FRONTEND_IMAGE: sia-frontend
+  MIN_BASE64_ENV_LENGTH: 16
 
 jobs:
   # ── Job 1: Build & Push Backend ────────────────────────────
@@ -125,15 +126,21 @@ jobs:
 
       - name: Deploy via SSH to EC2
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          # Optional: base64-encoded backend env file to seed /opt/sia/.env.backend
+          BACKEND_ENV_BASE64: ${{ secrets.BACKEND_ENV_BASE64 }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
           timeout: 300s
+          envs: AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,ECR_REGISTRY,BACKEND_ENV_BASE64,MIN_BASE64_ENV_LENGTH
           script: |
             set -e
-            echo "=== SIA Auto-Deploy (every 5min): $(date) ==="
+            echo "=== SIA Auto-Deploy: $(date) ==="
 
             # Pull latest code from GitHub
             cd /opt/sia
@@ -141,24 +148,59 @@ jobs:
             echo "✓ Code updated from GitHub"
 
             # Authenticate with ECR
-            aws ecr get-login-password --region ${{ env.AWS_REGION }} | \
-              docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}
+            aws ecr get-login-password --region $AWS_REGION | \
+              docker login --username AWS --password-stdin $ECR_REGISTRY
             echo "✓ ECR login successful"
 
+            # Ensure backend env file exists
+            BACKEND_ENV_FILE="/opt/sia/.env.backend"
+            BACKEND_ENV_TEMPLATE="/opt/sia/backend/.env.example"
+            if [ -n "${BACKEND_ENV_BASE64:-}" ]; then
+              # Strip whitespace to support multiline GitHub secrets.
+              BACKEND_ENV_CLEAN="$(printf '%s' "$BACKEND_ENV_BASE64" | tr -d '\n\r\t ')"
+              if [ -z "$BACKEND_ENV_CLEAN" ]; then
+                echo "❌ BACKEND_ENV_BASE64 is empty." >&2
+                exit 1
+              fi
+              # Decode base64 directly (supports both standard and URL-safe)
+              if printf '%s' "$BACKEND_ENV_CLEAN" | tr '_-' '/+' | base64 -d > "$BACKEND_ENV_FILE" 2>/dev/null; then
+                if [ ! -s "$BACKEND_ENV_FILE" ]; then
+                  echo "❌ BACKEND_ENV_BASE64 decoded to an empty file." >&2
+                  exit 1
+                fi
+                chmod 600 "$BACKEND_ENV_FILE"
+                echo "✓ Backend env loaded from BACKEND_ENV_BASE64 secret"
+              else
+                echo "❌ Failed to decode BACKEND_ENV_BASE64. Ensure it is valid base64." >&2
+                exit 1
+              fi
+            elif [ ! -f "$BACKEND_ENV_FILE" ]; then
+              if [ -f "$BACKEND_ENV_TEMPLATE" ]; then
+                echo "❌ Backend env file missing. Set BACKEND_ENV_BASE64 secret and re-run." >&2
+                exit 1
+              fi
+              echo "❌ Missing backend env file and no template available. Aborting deploy." >&2
+              exit 1
+            fi
+
             # Export env for docker compose
-            export ECR_REGISTRY=${{ env.ECR_REGISTRY }}
             export IMAGE_TAG=latest
+
+            # Stop and remove old containers to avoid name conflicts
+            docker compose -f docker-compose.prod.yml down --remove-orphans 2>/dev/null || true
+            docker rm -f sia-backend sia-frontend 2>/dev/null || true
+            echo "✓ Old containers stopped"
 
             # Pull latest images
             docker compose -f docker-compose.prod.yml pull
             echo "✓ Images pulled from ECR"
 
-            # Rolling restart: backend first, then frontend
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
-            echo "✓ Containers restarted"
+            # Start fresh containers
+            docker compose -f docker-compose.prod.yml up -d --force-recreate
+            echo "✓ Containers started"
 
             # Wait for backend health check
-            sleep 10
+            sleep 30
             curl -sf http://localhost:8000/health && echo "✓ Backend healthy" || echo "⚠ Backend health check failed"
 
             # Clean up old images

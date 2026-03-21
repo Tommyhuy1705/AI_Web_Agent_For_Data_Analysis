@@ -15,7 +15,7 @@ import json
 import logging
 import os
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 from backend.services.db_executor import execute_safe_query, upsert_via_rest
 from backend.services.llm_client import chat_completion, is_configured

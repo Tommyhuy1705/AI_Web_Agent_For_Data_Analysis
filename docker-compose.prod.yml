@@ -4,8 +4,6 @@
 # Images are pulled from ECR, not built locally.
 # ============================================================
 
-version: "3.9"
-
 services:
   # ── Backend (FastAPI) ───────────────────────────────────────
   backend:
