@@ -1,6 +1,6 @@
 /**
  * Dashboard Page - Static Enterprise Dashboard
- * Hiển thị grid các biểu đồ tổng quan doanh thu, sản phẩm, khách hàng.
+ * Showing grid các chart tổng quan revenue, product, customer.
  * Tự động load data mới nhất khi user truy cập.
  */
 
@@ -160,7 +160,7 @@ function ChartCard({
       <div className={`bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-sm rounded-2xl p-6 transition-all hover:shadow-md ${className}`}>
         <h3 className="text-sm font-medium mb-2">{chartData?.title || "Error"}</h3>
         <div className="flex items-center justify-center h-48 text-muted-foreground text-xs">
-          Không thể tải dữ liệu
+          Failed to load data
         </div>
       </div>
     );
@@ -232,10 +232,18 @@ function ChartCard({
                 cx="50%"
                 cy="50%"
                 outerRadius="70%"
-                label={({ name, percent }) =>
-                  `${name}: ${(percent * 100).toFixed(1)}%`
-                }
-                labelLine={{ strokeWidth: 1 }}
+                label={({ cx, cy, midAngle, innerRadius, outerRadius, percent, index }) => {
+                  const RADIAN = Math.PI / 180;
+                  const radius = outerRadius * 1.15;
+                  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                  return (
+                    <text x={x} y={y} fill={COLORS[index % COLORS.length]} textAnchor={x > cx ? "start" : "end"} dominantBaseline="central">
+                      {(percent * 100).toFixed(1)}%
+                    </text>
+                  );
+                }}
+                labelLine={{ strokeWidth: 1, stroke: "#64748b" }}
               >
                 {data.map((_: any, i: number) => (
                   <Cell key={i} fill={COLORS[i % COLORS.length]} />
@@ -275,7 +283,7 @@ function ChartCard({
       default:
         return (
           <div className="flex items-center justify-center h-48 text-muted-foreground text-xs">
-            Loại biểu đồ không được hỗ trợ
+            Unsupported chart type
           </div>
         );
     }
@@ -330,10 +338,10 @@ export default function DashboardPage() {
       {/* Dashboard Top Actions */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white mb-2">Quản trị Doanh nghiệp</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white mb-2">Enterprise Dashboard</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Số liệu doanh thu và phân tích tự động cập nhật theo thời gian thực.
-            {lastUpdated && ` Cập nhật lần cuối: ${lastUpdated.toLocaleTimeString("vi-VN")}`}
+            Revenue and analytics figures are updated automatically in real-time.
+            {lastUpdated && ` Last updated: ${lastUpdated.toLocaleTimeString("vi-VN")}`}
           </p>
         </div>
 
@@ -344,7 +352,7 @@ export default function DashboardPage() {
             className="flex items-center gap-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl disabled:opacity-50 transition-all shadow-md shadow-indigo-600/20 font-medium"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-            Làm mới Dữ liệu
+            Refresh Data
           </button>
         </div>
       </div>
@@ -356,17 +364,17 @@ export default function DashboardPage() {
             <div className="p-4 bg-white dark:bg-slate-800 rounded-full shadow-lg shadow-indigo-500/10 mb-4 animate-bounce">
               <RefreshCw className="w-8 h-8 animate-spin text-indigo-500" />
             </div>
-            <p className="font-medium text-slate-600 dark:text-slate-300">Đang đồng bộ số liệu...</p>
+            <p className="font-medium text-slate-600 dark:text-slate-300">Syncing data...</p>
           </div>
         ) : error && !data ? (
           <div className="flex items-center justify-center h-64 bg-rose-50/50 dark:bg-rose-900/10 rounded-3xl border border-rose-100 dark:border-rose-900/20">
             <div className="text-center">
-              <p className="text-sm font-semibold text-rose-600 dark:text-rose-400 mb-4">Lỗi: {error}</p>
+              <p className="text-sm font-semibold text-rose-600 dark:text-rose-400 mb-4">Error: {error}</p>
               <button
                 onClick={fetchDashboardData}
                 className="text-sm font-medium px-6 py-2.5 rounded-xl bg-rose-600 text-white hover:bg-rose-700 shadow-lg shadow-rose-600/20 transition-all"
               >
-                Thử lại
+                Retry
               </button>
             </div>
           </div>
@@ -375,33 +383,33 @@ export default function DashboardPage() {
             {/* KPI Cards */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-5">
               <KPICard
-                title="Tổng doanh thu"
+                title="Total Revenue"
                 value={data.revenue_summary.total_revenue}
                 icon={DollarSign}
                 color="bg-gradient-to-br from-indigo-500 to-indigo-600"
                 format="currency"
               />
               <KPICard
-                title="Tổng đơn hàng"
+                title="Total Orders"
                 value={data.revenue_summary.total_orders}
                 icon={ShoppingCart}
                 color="bg-gradient-to-br from-blue-500 to-blue-600"
               />
               <KPICard
-                title="Giá trị TB/đơn"
+                title="Avg Order Value"
                 value={data.revenue_summary.avg_order_value}
                 icon={TrendingUp}
                 color="bg-gradient-to-br from-emerald-500 to-emerald-600"
                 format="currency"
               />
               <KPICard
-                title="Tổng khách hàng"
+                title="Total Customers"
                 value={data.revenue_summary.total_customers}
                 icon={Users}
                 color="bg-gradient-to-br from-amber-500 to-amber-600"
               />
               <KPICard
-                title="Tổng sản phẩm"
+                title="Total Products"
                 value={data.revenue_summary.total_products}
                 icon={Package}
                 color="bg-gradient-to-br from-rose-500 to-rose-600"
