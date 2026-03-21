@@ -5,7 +5,7 @@ Trả về tất cả dữ liệu cần thiết cho grid biểu đồ trong mộ
 """
 
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException
 

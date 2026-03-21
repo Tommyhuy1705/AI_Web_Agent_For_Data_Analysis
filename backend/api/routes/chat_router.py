@@ -16,9 +16,8 @@ import asyncio
 import json
 import logging
 import os
-import re
 import uuid
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, Optional
 
 import httpx
 from fastapi import APIRouter, HTTPException

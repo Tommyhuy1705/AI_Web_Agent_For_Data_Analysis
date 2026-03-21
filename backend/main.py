@@ -22,27 +22,26 @@ elif _root_env_path.exists():
 else:
     load_dotenv()  # fallback to cwd
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.interval import IntervalTrigger
-from apscheduler.triggers.cron import CronTrigger
+from fastapi import FastAPI  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from apscheduler.schedulers.asyncio import AsyncIOScheduler  # noqa: E402
+from apscheduler.triggers.interval import IntervalTrigger  # noqa: E402
+from apscheduler.triggers.cron import CronTrigger  # noqa: E402
 
-from backend.api.routes.chat_router import router as chat_router
-from backend.api.routes.sql_proxy import router as sql_router
-from backend.api.routes.predict_router import router as predict_router
-from backend.api.routes.dashboard_router import router as dashboard_router
-from backend.api.routes.market_intel_router import router as market_intel_router
-from backend.api.routes.chat_history_router import router as chat_history_router
-from backend.services.db_executor import get_pool, close_pool
-from backend.services.alarm_monitor import (
-    check_hourly_revenue_alarm,
+from backend.api.routes.chat_router import router as chat_router  # noqa: E402
+from backend.api.routes.sql_proxy import router as sql_router  # noqa: E402
+from backend.api.routes.predict_router import router as predict_router  # noqa: E402
+from backend.api.routes.dashboard_router import router as dashboard_router  # noqa: E402
+from backend.api.routes.market_intel_router import router as market_intel_router  # noqa: E402
+from backend.api.routes.chat_history_router import router as chat_history_router  # noqa: E402
+from backend.services.db_executor import get_pool, close_pool  # noqa: E402
+from backend.services.alarm_monitor import (  # noqa: E402
     check_smart_alarm_morning,
     set_alarm_event_queue,
 )
-from backend.services.dbt_runner import daily_dbt_run
-from backend.services.monthly_report import generate_monthly_report
-from backend.services.tinyfish_service import is_configured as tinyfish_configured
+from backend.services.dbt_runner import daily_dbt_run  # noqa: E402
+from backend.services.monthly_report import generate_monthly_report  # noqa: E402
+from backend.services.tinyfish_service import is_configured as tinyfish_configured  # noqa: E402
 
 # ============================================================
 # Logging Configuration
@@ -76,7 +75,7 @@ async def lifespan(app: FastAPI):
 
     # Initialize database connection pool
     try:
-        pool = await get_pool()
+        await get_pool()
         logger.info("Database connection pool initialized")
     except Exception as e:
         logger.warning(f"Database connection failed (will retry on demand): {e}")
