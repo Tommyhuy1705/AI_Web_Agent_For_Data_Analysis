@@ -161,7 +161,7 @@ jobs:
             echo "✓ Containers restarted"
 
             # Wait for backend health check
-            sleep 10
+            sleep 30
             curl -sf http://localhost:8000/health && echo "✓ Backend healthy" || echo "⚠ Backend health check failed"
 
             # Clean up old images
