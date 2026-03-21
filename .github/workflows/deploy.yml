@@ -170,29 +170,28 @@ jobs:
               fi
               TMP_ENV_FILE="$(mktemp -t backend-env.XXXXXX)" || { echo "❌ Unable to create temp file for env payload." >&2; exit 1; }
               TMP_ENV_ERR="$(mktemp -t backend-env-err.XXXXXX)" || { echo "❌ Unable to create temp file for env errors." >&2; rm -f "$TMP_ENV_FILE"; exit 1; }
+              cleanup_env_tmp() {
+                rm -f "$TMP_ENV_FILE" "$TMP_ENV_ERR"
+              }
+              trap cleanup_env_tmp EXIT
               if printf '%s' "$BACKEND_ENV_CLEAN" | base64 --decode > "$TMP_ENV_FILE" 2> "$TMP_ENV_ERR"; then
                 if [ ! -s "$TMP_ENV_FILE" ]; then
                   echo "❌ BACKEND_ENV_BASE64 decoded to an empty file." >&2
-                  rm -f "$TMP_ENV_FILE"
-                  rm -f "$TMP_ENV_ERR"
                   exit 1
                 fi
                 mv -f "$TMP_ENV_FILE" "$BACKEND_ENV_FILE"
                 chmod 600 "$BACKEND_ENV_FILE"
-                rm -f "$TMP_ENV_ERR"
                 echo "✓ Backend env loaded from BACKEND_ENV_BASE64 secret"
               else
                 DECODE_ERROR="$(cat "$TMP_ENV_ERR")"
                 echo "❌ Failed to decode BACKEND_ENV_BASE64: ${DECODE_ERROR:-unknown error}." >&2
-                rm -f "$TMP_ENV_FILE"
-                rm -f "$TMP_ENV_ERR"
                 exit 1
               fi
             elif [ ! -f "$BACKEND_ENV_FILE" ]; then
               if [ -f "$BACKEND_ENV_TEMPLATE" ]; then
                 cp "$BACKEND_ENV_TEMPLATE" "$BACKEND_ENV_FILE"
                 chmod 600 "$BACKEND_ENV_FILE"
-                echo "ℹ️ Template copied to /opt/sia/.env.backend." >&2
+                echo "ℹ️ Template copied to /opt/sia/.env.backend."
                 echo "❌ Production deploys require the BACKEND_ENV_BASE64 secret with real values. Set it and re-run the workflow." >&2
                 exit 1
               else
