@@ -15,8 +15,8 @@ on:
     branches:
       - main
   schedule:
-    # Auto-deploy every 30 minutes to sync with latest GitHub changes
-    - cron: "*/30 * * * *"
+   # Auto-deploy every 5 minutes to sync with latest GitHub changes
+    - cron: "*/5 * * * *"
   workflow_dispatch:
     inputs:
       force_deploy:
@@ -133,7 +133,7 @@ jobs:
           timeout: 300s
           script: |
             set -e
-            echo "=== SIA Auto-Deploy: $(date) ==="
+            echo "=== SIA Auto-Deploy (every 5min): $(date) ==="
 
             # Pull latest code from GitHub
             cd /opt/sia
