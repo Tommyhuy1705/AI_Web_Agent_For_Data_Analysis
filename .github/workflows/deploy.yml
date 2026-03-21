@@ -29,6 +29,7 @@ env:
   ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
   BACKEND_IMAGE: sia-backend
   FRONTEND_IMAGE: sia-frontend
+  MIN_BASE64_ENV_LENGTH: 16
 
 jobs:
   # ── Job 1: Build & Push Backend ────────────────────────────
@@ -136,10 +137,10 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
           timeout: 300s
-          envs: AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,ECR_REGISTRY,BACKEND_ENV_BASE64
+          envs: AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,ECR_REGISTRY,BACKEND_ENV_BASE64,MIN_BASE64_ENV_LENGTH
           script: |
             set -e
-            MIN_BASE64_ENV_LENGTH=16 # 16 base64 chars ≈ 12 decoded bytes; smaller payloads won't be a real env file.
+            MIN_BASE64_ENV_LENGTH="${MIN_BASE64_ENV_LENGTH:-16}" # 16 base64 chars ≈ 12 decoded bytes; smaller payloads won't be a real env file.
             echo "=== SIA Auto-Deploy (every 5min): $(date) ==="
 
             # Pull latest code from GitHub
@@ -156,6 +157,7 @@ jobs:
             BACKEND_ENV_FILE="/opt/sia/.env.backend"
             BACKEND_ENV_TEMPLATE="/opt/sia/backend/.env.example"
             if [ -n "${BACKEND_ENV_BASE64:-}" ]; then
+              # Strip whitespace to support multiline GitHub secrets.
               BACKEND_ENV_CLEAN="$(printf '%s' "$BACKEND_ENV_BASE64" | tr -d '\n\r\t ')"
               if [ -z "$BACKEND_ENV_CLEAN" ]; then
                 echo "❌ BACKEND_ENV_BASE64 is empty." >&2
@@ -177,6 +179,7 @@ jobs:
                 echo "❌ BACKEND_ENV_BASE64 mixes standard (+/) and URL-safe (-_) characters." >&2
                 exit 1
               fi
+              # Convert URL-safe base64 (-_) to standard base64 (+/) before decoding.
               BACKEND_ENV_DECODE_INPUT="$(printf '%s' "$BACKEND_ENV_CLEAN" | tr '_-' '/+')"
               if ! printf '%s' "$BACKEND_ENV_DECODE_INPUT" | grep -Eq '^[A-Za-z0-9+/]+={0,2}$'; then
                 echo "❌ BACKEND_ENV_BASE64 contains invalid characters." >&2
@@ -217,14 +220,11 @@ jobs:
               fi
             elif [ ! -f "$BACKEND_ENV_FILE" ]; then
               if [ -f "$BACKEND_ENV_TEMPLATE" ]; then
-                cp "$BACKEND_ENV_TEMPLATE" "$BACKEND_ENV_FILE"
-                chmod 600 "$BACKEND_ENV_FILE"
-                echo "❌ Template copied to /opt/sia/.env.backend, but production deploys require the BACKEND_ENV_BASE64 secret with real values. Set it and re-run the workflow." >&2
-                exit 1
-              else
-                echo "❌ Missing backend env file and no template available. Aborting deploy." >&2
+                echo "❌ Backend env file missing. Use /opt/sia/backend/.env.example as a reference and set BACKEND_ENV_BASE64 with real values, then re-run the workflow." >&2
                 exit 1
               fi
+              echo "❌ Missing backend env file and no template available. Aborting deploy." >&2
+              exit 1
             fi
 
             # Export env for docker compose
