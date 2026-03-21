@@ -34,6 +34,7 @@ from backend.api.routes.predict_router import router as predict_router  # noqa: 
 from backend.api.routes.dashboard_router import router as dashboard_router  # noqa: E402
 from backend.api.routes.market_intel_router import router as market_intel_router  # noqa: E402
 from backend.api.routes.chat_history_router import router as chat_history_router  # noqa: E402
+from backend.api.routes.audio_router import router as audio_router  # noqa: E402
 from backend.services.db_executor import get_pool, close_pool  # noqa: E402
 from backend.services.alarm_monitor import (  # noqa: E402
     check_smart_alarm_morning,
@@ -192,6 +193,7 @@ app.include_router(predict_router)
 app.include_router(dashboard_router)
 app.include_router(market_intel_router)
 app.include_router(chat_history_router)
+app.include_router(audio_router)
 
 
 # ============================================================
@@ -225,6 +227,14 @@ async def health():
         "tinyfish": {
             "configured": tinyfish_configured(),
             "purpose": "Market Intelligence (Competitor Tracking)",
+        },
+        "exa": {
+            "configured": bool(os.getenv("EXA_API_KEY")),
+            "purpose": "Qualitative Market News Search",
+        },
+        "elevenlabs": {
+            "configured": bool(os.getenv("ELEVENLABS_API_KEY")),
+            "purpose": "Text-to-Speech Audio Briefing",
         },
         "scheduler": {
             "running": scheduler.running,
