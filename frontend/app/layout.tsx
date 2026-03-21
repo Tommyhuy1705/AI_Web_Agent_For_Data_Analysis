@@ -5,7 +5,7 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Omni-Revenue Agent",
+  title: "SIA",
   description: "AI Web Agent for Enterprise Data Analysis",
 };
 

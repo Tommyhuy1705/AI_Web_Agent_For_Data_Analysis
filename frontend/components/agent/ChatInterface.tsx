@@ -221,7 +221,7 @@ export default function ChatInterface() {
       <div className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0">
         <div className="flex items-center gap-2">
           <Bot className="w-5 h-5 text-primary" />
-          <h2 className="font-semibold text-sm">Omni-Revenue Agent</h2>
+          <h2 className="font-semibold text-sm">SIA</h2>
           <span
             className={cn(
               "w-2 h-2 rounded-full",
@@ -248,7 +248,7 @@ export default function ChatInterface() {
           <div className="flex flex-col items-center justify-center h-full text-center">
             <Bot className="w-12 h-12 text-muted-foreground mb-4" />
             <h3 className="text-lg font-medium mb-2">
-              Xin chào! Tôi là Omni-Revenue Agent
+              Xin chào! Tôi là SIA
             </h3>
             <p className="text-sm text-muted-foreground mb-6 max-w-md">
               Tôi có thể giúp bạn phân tích dữ liệu doanh thu, tạo biểu đồ, và

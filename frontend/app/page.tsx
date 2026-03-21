@@ -1,5 +1,5 @@
 /**
- * Main Page - Omni-Revenue Agent
+ * Main Page - SIA
  * UI chia 2 cột: Chat (trái) & Canvas/Dashboard (phải)
  * Hỗ trợ hiển thị multi-chart grid khi user yêu cầu tạo dashboard.
  */
@@ -40,7 +40,7 @@ export default function Home() {
       <header className="flex-shrink-0 flex items-center justify-between px-6 py-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex items-center gap-3">
           <Activity className="w-5 h-5 text-primary" />
-          <h1 className="text-base font-bold">Omni-Revenue Agent</h1>
+          <h1 className="text-base font-bold">SIA</h1>
           <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
             Enterprise AI
           </span>

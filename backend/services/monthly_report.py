@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 # SendGrid config (reuse from alarm_monitor)
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY", "")
-SENDGRID_FROM_EMAIL = os.getenv("SENDGRID_FROM_EMAIL", "noreply@omni-revenue.com")
+SENDGRID_FROM_EMAIL = os.getenv("SENDGRID_FROM_EMAIL", "noreply@sia-agent.com")
 REPORT_RECIPIENTS = [
     e.strip()
     for e in os.getenv("REPORT_RECIPIENTS", os.getenv("ALERT_RECIPIENTS", "admin@company.com")).split(",")
@@ -240,7 +240,7 @@ async def _send_report_email(report_month: str, content: str):
             </div>
             <hr>
             <p style="color: #666; font-size: 12px;">
-                Báo cáo này được sinh tự động bởi Omni-Revenue Agent.<br>
+                Báo cáo này được sinh tự động bởi SIA.<br>
                 Thời gian: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}
             </p>
         </div>
@@ -251,7 +251,7 @@ async def _send_report_email(report_month: str, content: str):
                 "https://api.sendgrid.com/v3/mail/send",
                 json={
                     "personalizations": [{"to": [{"email": e} for e in REPORT_RECIPIENTS]}],
-                    "from": {"email": SENDGRID_FROM_EMAIL, "name": "Omni-Revenue Agent"},
+                    "from": {"email": SENDGRID_FROM_EMAIL, "name": "SIA"},
                     "subject": f"Báo cáo Chiến lược Doanh thu - Tháng {report_month}",
                     "content": [{"type": "text/html", "value": html_content}],
                 },

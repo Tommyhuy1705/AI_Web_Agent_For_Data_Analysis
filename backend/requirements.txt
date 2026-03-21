@@ -1,4 +1,4 @@
-# Omni-Revenue Agent - Backend Dependencies
+# SIA - Backend Dependencies
 
 # Web Framework
 fastapi>=0.115.0

@@ -1,5 +1,5 @@
 """
-Omni-Revenue Agent - Backend Main Application
+SIA - Backend Main Application
 FastAPI App with SSE config, APScheduler for Proactive Alarm,
 and CORS configuration for Next.js frontend.
 """
@@ -67,7 +67,7 @@ async def lifespan(app: FastAPI):
     """Application startup and shutdown events."""
     # Startup
     logger.info("=" * 60)
-    logger.info("OMNI-REVENUE AGENT - Backend Starting...")
+    logger.info("SIA - Backend Starting...")
     logger.info("=" * 60)
 
     # Initialize database connection pool
@@ -123,7 +123,7 @@ async def lifespan(app: FastAPI):
 # FastAPI App
 # ============================================================
 app = FastAPI(
-    title="Omni-Revenue Agent API",
+    title="SIA API",
     description="AI Web Agent for Enterprise Data Analysis - Backend API",
     version="1.0.0",
     lifespan=lifespan,
@@ -167,7 +167,7 @@ app.include_router(dashboard_router)
 async def root():
     """Root endpoint."""
     return {
-        "service": "Omni-Revenue Agent API",
+        "service": "SIA API",
         "version": "1.0.0",
         "status": "running",
         "docs": "/docs",

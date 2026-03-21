@@ -36,7 +36,7 @@ ALARM_THRESHOLD_PCT = 15.0  # Ngưỡng cảnh báo: giảm > 15%
 DIFY_WEBHOOK_URL = os.getenv("DIFY_WEBHOOK_URL", "")
 DIFY_API_KEY = os.getenv("DIFY_API_KEY", "")
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY", "")
-SENDGRID_FROM_EMAIL = os.getenv("SENDGRID_FROM_EMAIL", "noreply@omni-revenue.com")
+SENDGRID_FROM_EMAIL = os.getenv("SENDGRID_FROM_EMAIL", "noreply@sia-agent.com")
 ALERT_RECIPIENTS = [e.strip() for e in os.getenv("ALERT_RECIPIENTS", "admin@company.com").split(",")]
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
@@ -307,7 +307,7 @@ async def _send_alarm_email(alarm_data: Dict[str, Any]) -> bool:
     """Gửi email cảnh báo qua SendGrid API."""
     severity_emoji = "🔴" if alarm_data["severity"] == "critical" else "🟡"
     severity_color = "#DC2626" if alarm_data["severity"] == "critical" else "#F59E0B"
-    subject = f"{severity_emoji} Omni-Revenue Alert: Doanh thu giảm {abs(alarm_data['change_pct'])}%"
+    subject = f"{severity_emoji} SIA Alert: Doanh thu giảm {abs(alarm_data['change_pct'])}%"
 
     # AI insight section
     ai_insight_html = ""
@@ -404,7 +404,7 @@ async def _send_alarm_email(alarm_data: Dict[str, Any]) -> bool:
 
         <!-- Footer -->
         <div style="text-align: center; padding: 16px; color: #9CA3AF; font-size: 11px;">
-            Omni-Revenue Agent | Automated Alert System<br>
+            SIA | Automated Alert System<br>
             <a href="{FRONTEND_URL}" style="color: #6B7280;">Truy cập hệ thống</a>
         </div>
     </div>
@@ -415,7 +415,7 @@ async def _send_alarm_email(alarm_data: Dict[str, Any]) -> bool:
             "https://api.sendgrid.com/v3/mail/send",
             json={
                 "personalizations": [{"to": [{"email": e} for e in ALERT_RECIPIENTS]}],
-                "from": {"email": SENDGRID_FROM_EMAIL, "name": "Omni-Revenue Agent"},
+                "from": {"email": SENDGRID_FROM_EMAIL, "name": "SIA"},
                 "subject": subject,
                 "content": [{"type": "text/html", "value": html_content}],
             },

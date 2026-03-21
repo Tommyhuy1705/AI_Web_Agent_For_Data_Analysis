@@ -3,10 +3,10 @@ omni_revenue:
   outputs:
     dev:
       type: postgres
-      host: "{{ env_var('SUPABASE_DB_HOST', 'db.your_project.supabase.co') }}"
-      port: 5432
-      user: "{{ env_var('SUPABASE_DB_USER', 'postgres') }}"
-      password: "{{ env_var('SUPABASE_DB_PASSWORD', 'your_password') }}"
+      host: "{{ env_var('SUPABASE_DB_HOST', 'aws-0-ap-southeast-1.pooler.supabase.com') }}"
+      port: "{{ env_var('SUPABASE_DB_PORT', '6543') | int }}"
+      user: "{{ env_var('SUPABASE_DB_USER', 'postgres.qunhqqnmsqiahsrneqcy') }}"
+      password: "{{ env_var('SUPABASE_DB_PASSWORD', '') }}"
       dbname: "{{ env_var('SUPABASE_DB_NAME', 'postgres') }}"
       schema: analytics_mart
       threads: 4
