@@ -1,0 +1,66 @@
+# ============================================================
+# SIA — Docker Compose (Production / AWS EC2)
+# Usage: docker compose -f docker-compose.prod.yml up -d
+# Images are pulled from ECR, not built locally.
+# ============================================================
+
+version: "3.9"
+
+services:
+  # ── Backend (FastAPI) ───────────────────────────────────────
+  backend:
+    image: ${ECR_REGISTRY}/sia-backend:${IMAGE_TAG:-latest}
+    container_name: sia-backend
+    restart: always
+    env_file:
+      - /opt/sia/.env.backend
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - sia-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ── Frontend (Next.js) ──────────────────────────────────────
+  frontend:
+    image: ${ECR_REGISTRY}/sia-frontend:${IMAGE_TAG:-latest}
+    container_name: sia-frontend
+    restart: always
+    environment:
+      - NEXT_PUBLIC_BACKEND_URL=http://backend:8000
+      - NODE_ENV=production
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - sia-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+networks:
+  sia-network:
+    driver: bridge
+    name: sia-network
