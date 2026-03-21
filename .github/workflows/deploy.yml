@@ -197,6 +197,7 @@ jobs:
                 if command -v shred >/dev/null 2>&1; then
                   shred -u "$@"
                 else
+                  echo "⚠️ 'shred' not available; falling back to rm -f for temp files." >&2
                   rm -f "$@"
                 fi
               }
