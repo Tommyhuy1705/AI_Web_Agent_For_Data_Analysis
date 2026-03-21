@@ -1,16 +1,30 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, Sparkles, Loader2, BarChart2, CheckCircle2, MessageSquareText, Search, Database, ChevronDown, ChevronRight, Check, Copy, History, PlusCircle, Command, MessageSquare, Trash2, X, Clock, Mic } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
-import { vi } from "date-fns/locale";
-import { useCallback } from "react";
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
-  Send, Bot, User, Sparkles, Loader2, BarChart2, CheckCircle2,
-  MessageSquareText, Search, Database, ChevronDown, ChevronRight,
-  Check, Copy, History, PlusCircle, MessageSquare, Trash2, X, Clock,
-  Mic, MicOff, Volume2, VolumeX,
+  Send,
+  Bot,
+  User,
+  Sparkles,
+  Loader2,
+  BarChart2,
+  CheckCircle2,
+  MessageSquareText,
+  Search,
+  Database,
+  ChevronDown,
+  ChevronRight,
+  Check,
+  Copy,
+  History,
+  PlusCircle,
+  MessageSquare,
+  Trash2,
+  X,
+  Clock,
+  Mic,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import { useAgentStore, ChatSession, ChatMessage as ChatMessageType } from "@/store/useAgentStore";
 import { useAgentStream } from "@/hooks/useAgentStream";
@@ -486,10 +500,8 @@ export default function ChatInterface() {
                 <BarChart2 className="w-5 h-5 text-indigo-500 shrink-0 group-hover:scale-110 transition-transform" />
                 <span className="text-sm text-slate-600 dark:text-slate-300 font-medium">Analyze revenue this month vs last month</span>
               </button>
-              <button 
-                onClick={() => handleSuggestionClick("What are the top 5 best-selling products?")}
               <button
-                onClick={() => handleSuggestionClick("Top 5 sản phẩm bán chạy nhất là gì?")}
+                onClick={() => handleSuggestionClick("What are the top 5 best-selling products?")}
                 className="group flex gap-3 p-3.5 px-4 rounded-2xl bg-white dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/50 hover:bg-emerald-50/50 hover:border-emerald-200 dark:hover:bg-emerald-900/20 dark:hover:border-emerald-800 transition-all shadow-sm hover:shadow"
               >
                 <Search className="w-5 h-5 text-emerald-500 shrink-0 group-hover:scale-110 transition-transform" />
