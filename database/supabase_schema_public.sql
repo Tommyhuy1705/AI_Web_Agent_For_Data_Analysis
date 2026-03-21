@@ -87,6 +87,56 @@ CREATE INDEX IF NOT EXISTS idx_raw_sales_data_gin
     ON public.raw_sales USING GIN (data);
 
 -- ============================================================
+-- Market Intelligence: Raw data from TinyFish crawlers
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.raw_market_intel (
+    id              BIGSERIAL PRIMARY KEY,
+    source          VARCHAR(50) NOT NULL,       -- 'shopee', 'tiki', 'alibaba', etc.
+    crawl_type      VARCHAR(50) NOT NULL,       -- 'competitor_price', 'review', 'material_cost'
+    keyword         VARCHAR(255),               -- Từ khóa tìm kiếm
+    raw_data        JSONB NOT NULL,             -- Nguyên cục JSON do TinyFish cào về
+    crawled_at      TIMESTAMPTZ DEFAULT NOW(),
+    processed       BOOLEAN DEFAULT FALSE
+);
+
+CREATE INDEX IF NOT EXISTS idx_raw_market_intel_source
+    ON public.raw_market_intel (source);
+
+CREATE INDEX IF NOT EXISTS idx_raw_market_intel_crawl_type
+    ON public.raw_market_intel (crawl_type);
+
+CREATE INDEX IF NOT EXISTS idx_raw_market_intel_data_gin
+    ON public.raw_market_intel USING GIN (raw_data);
+
+CREATE INDEX IF NOT EXISTS idx_raw_market_intel_crawled_at
+    ON public.raw_market_intel (crawled_at DESC);
+
+-- Competitor Prices (Materialized from raw_market_intel)
+CREATE TABLE IF NOT EXISTS public.competitor_prices (
+    id              BIGSERIAL PRIMARY KEY,
+    source          VARCHAR(50) NOT NULL,
+    product_name    VARCHAR(500) NOT NULL,
+    price           NUMERIC(14, 2),
+    original_price  NUMERIC(14, 2),
+    discount_pct    NUMERIC(5, 2) DEFAULT 0,
+    sold_count      INTEGER DEFAULT 0,
+    rating          NUMERIC(3, 2),
+    seller_name     VARCHAR(255),
+    product_url     TEXT,
+    keyword         VARCHAR(255),
+    crawled_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_competitor_prices_source
+    ON public.competitor_prices (source);
+
+CREATE INDEX IF NOT EXISTS idx_competitor_prices_keyword
+    ON public.competitor_prices (keyword);
+
+CREATE INDEX IF NOT EXISTS idx_competitor_prices_crawled_at
+    ON public.competitor_prices (crawled_at DESC);
+
+-- ============================================================
 -- VIEWS for analytics
 -- ============================================================
 
@@ -140,6 +190,32 @@ FROM public.fact_sales
 GROUP BY DATE_TRUNC('month', order_date)
 ORDER BY month DESC;
 
+-- View: Competitor Price Summary
+CREATE OR REPLACE VIEW public.v_competitor_price_summary AS
+SELECT
+    source,
+    keyword,
+    COUNT(*) AS total_products,
+    AVG(price) AS avg_price,
+    MIN(price) AS min_price,
+    MAX(price) AS max_price,
+    AVG(discount_pct) AS avg_discount,
+    AVG(sold_count) AS avg_sold_count,
+    MAX(crawled_at) AS last_crawled
+FROM public.competitor_prices
+GROUP BY source, keyword
+ORDER BY last_crawled DESC;
+
+-- View: Latest Market Intel
+CREATE OR REPLACE VIEW public.v_latest_market_intel AS
+SELECT
+    id, source, crawl_type, keyword,
+    raw_data,
+    crawled_at
+FROM public.raw_market_intel
+WHERE crawled_at >= NOW() - INTERVAL '7 days'
+ORDER BY crawled_at DESC;
+
 -- ============================================================
 -- RPC Function: exec_sql (for dynamic SQL execution)
 -- ============================================================
@@ -190,3 +266,12 @@ CREATE POLICY "Anon read access" ON public.dim_customers FOR SELECT TO anon USIN
 CREATE POLICY "Anon read access" ON public.fact_sales FOR SELECT TO anon USING (true);
 CREATE POLICY "Anon read access" ON public.hourly_snapshot FOR SELECT TO anon USING (true);
 CREATE POLICY "Anon read access" ON public.raw_sales FOR SELECT TO anon USING (true);
+
+-- Market Intel tables
+ALTER TABLE public.raw_market_intel ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.competitor_prices ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role full access" ON public.raw_market_intel FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role full access" ON public.competitor_prices FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Anon read access" ON public.raw_market_intel FOR SELECT TO anon USING (true);
+CREATE POLICY "Anon read access" ON public.competitor_prices FOR SELECT TO anon USING (true);

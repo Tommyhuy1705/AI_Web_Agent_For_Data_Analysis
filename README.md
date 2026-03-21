@@ -15,6 +15,7 @@ Omni-Revenue Agent cho phép người dùng **chat bằng ngôn ngữ tự nhiê
 | **Database** | Supabase (PostgreSQL) | Zero Data Lake Architecture |
 | **AI Orchestration** | Dify, Zilliz, OpenAI GPT | Multi-Agent, Semantic Layer, Text-to-SQL |
 | **Data Pipeline** | dbt, Python Scripts | In-database Transformation |
+| **Market Intel** | TinyFish (AgentQL) | Web Scraping đối thủ cạnh tranh |
 | **ML** | Scikit-learn | Time Series Prediction |
 
 ## Cấu trúc thư mục
@@ -42,11 +43,13 @@ omni-revenue-agent/
 │   ├── api/routes/
 │   │   ├── chat_router.py       # Chat endpoint + Dify integration
 │   │   ├── sql_proxy.py         # Safe SQL execution (SELECT only)
-│   │   └── predict_router.py    # Predictive analytics endpoint
+│   │   ├── predict_router.py    # Predictive analytics endpoint
+│   │   └── market_intel_router.py  # TinyFish Market Intelligence API
 │   ├── services/
 │   │   ├── db_executor.py       # Supabase connection (asyncpg)
 │   │   ├── manus_visualizer.py  # Chart config generation
-│   │   ├── alarm_monitor.py     # Proactive alarm logic
+│   │   ├── alarm_monitor.py     # Proactive alarm logic (+ competitor enrichment)
+│   │   ├── tinyfish_service.py  # TinyFish Market Intelligence service
 │   │   ├── dify_service.py      # Dify API integration
 │   │   └── zilliz_service.py    # Vector DB semantic layer
 │   ├── ml_models/
@@ -56,11 +59,13 @@ omni-revenue-agent/
 │
 ├── data_pipeline/               # Data Engineering
 │   ├── crawler_scripts/
-│   │   └── mock_data_loader.py  # Mock data → raw_staging
+│   │   ├── mock_data_loader.py  # Mock data → raw_staging
+│   │   └── tinyfish_market_crawler.py  # TinyFish → Market Intel
 │   └── dbt_transform/
 │       ├── dbt_project.yml
 │       ├── profiles.yml
 │       └── models/              # SQL transform JSONB → analytics_mart
+│           ├── stg_competitor_prices.sql  # Competitor prices from TinyFish
 │
 ├── database/
 │   └── supabase_schema.sql      # DDL cho Zero Data Lake
@@ -151,6 +156,10 @@ Truy cập: `http://localhost:3000`
 | POST | `/api/predict/revenue` | Revenue prediction |
 | GET | `/api/predict/health` | Prediction service health |
 | GET | `/api/alarm/stream` | Alarm SSE stream |
+| GET | `/api/market-intel/status` | TinyFish config status |
+| POST | `/api/market-intel/crawl` | Trigger market crawl |
+| GET | `/api/market-intel/summary` | Market intel summary |
+| GET | `/api/market-intel/competitors` | Competitor prices data |
 | GET | `/docs` | Swagger UI |
 
 ## Environment Variables
@@ -169,6 +178,7 @@ Truy cập: `http://localhost:3000`
 | `ZILLIZ_CLOUD_URI` | Zilliz Cloud endpoint |
 | `ZILLIZ_API_KEY` | Zilliz API key |
 | `SENDGRID_API_KEY` | SendGrid email API key |
+| `TINYFISH_API_KEY` | TinyFish (AgentQL) API key for market intelligence |
 | `FRONTEND_URL` | Frontend URL for CORS |
 
 Lưu ý: endpoint `/api/sql/execute` đang dùng asyncpg nên vẫn cần `SUPABASE_DATABASE_URL` (hoặc bộ `SUPABASE_DB_HOST/USER/PASSWORD/NAME`) để truy vấn SQL read-only trực tiếp.
@@ -196,6 +206,7 @@ docs: update README with API documentation
 - [x] Phase 2: Backend Core (FastAPI)
 - [x] Phase 3: Frontend Chat & Canvas (Next.js)
 - [x] Phase 4: AI Integration (Dify, Zilliz, ML)
+- [x] Phase 5: Market Intelligence (TinyFish/AgentQL)
 - [ ] Phase 2 (Future): Voice-to-Text / Text-to-Speech integration
 - [ ] Phase 2 (Future): Multi-tenant support
 - [ ] Phase 2 (Future): Advanced ML models (Prophet, LSTM)

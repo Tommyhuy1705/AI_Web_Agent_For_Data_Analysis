@@ -188,7 +188,17 @@ async def _trigger_alarm(
                    f"(Hiện tại: {current_revenue:,.0f} VNĐ, Trước đó: {previous_revenue:,.0f} VNĐ)"
     }
 
-    # 1. Sinh AI insight về nguyên nhân có thể
+    # 0. Enrich với dữ liệu đối thủ từ TinyFish (nếu có)
+    try:
+        from backend.services.tinyfish_service import get_competitor_context_for_alarm
+        competitor_context = await get_competitor_context_for_alarm()
+        if competitor_context:
+            alarm_data["competitor_context"] = competitor_context
+            logger.info("Alarm enriched with competitor context from TinyFish")
+    except Exception as e:
+        logger.debug(f"Could not enrich alarm with competitor data: {e}")
+
+    # 1. Sinh AI insight về nguyên nhân có thể (bao gồm competitor context)
     ai_insight = await _generate_alarm_insight(alarm_data)
     if ai_insight:
         alarm_data["ai_insight"] = ai_insight
@@ -229,7 +239,8 @@ async def _generate_alarm_insight(alarm_data: Dict[str, Any]) -> Optional[str]:
                                f"Hiện tại: {alarm_data['current_revenue']:,.0f} VNĐ, "
                                f"Trước đó: {alarm_data['previous_revenue']:,.0f} VNĐ. "
                                f"Mức độ: {alarm_data['severity']}. "
-                               f"Phân tích nguyên nhân có thể và đề xuất hành động."
+                               + (f"\n\nDữ liệu đối thủ cạnh tranh: {alarm_data.get('competitor_context', 'Không có dữ liệu')}" if alarm_data.get('competitor_context') else "")
+                               + f"\nPhân tích nguyên nhân có thể và đề xuất hành động."
                 },
             ],
             temperature=0.3,

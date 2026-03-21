@@ -97,6 +97,32 @@ CREATE INDEX IF NOT EXISTS idx_fact_sales_channel
     ON analytics_mart.fact_sales (channel);
 
 -- ============================================================
+-- Market Intelligence: Raw data from TinyFish crawlers
+-- Chứa dữ liệu cào từ Shopee, Tiki, Alibaba, etc.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS raw_staging.raw_market_intel (
+    id              BIGSERIAL PRIMARY KEY,
+    source          VARCHAR(50) NOT NULL,       -- 'shopee', 'tiki', 'alibaba', etc.
+    crawl_type      VARCHAR(50) NOT NULL,       -- 'competitor_price', 'review', 'material_cost'
+    keyword         VARCHAR(255),               -- Từ khóa tìm kiếm
+    raw_data        JSONB NOT NULL,             -- Nguyên cục JSON do TinyFish cào về
+    crawled_at      TIMESTAMPTZ DEFAULT NOW(),
+    processed       BOOLEAN DEFAULT FALSE
+);
+
+CREATE INDEX IF NOT EXISTS idx_raw_market_intel_source
+    ON raw_staging.raw_market_intel (source);
+
+CREATE INDEX IF NOT EXISTS idx_raw_market_intel_crawl_type
+    ON raw_staging.raw_market_intel (crawl_type);
+
+CREATE INDEX IF NOT EXISTS idx_raw_market_intel_data_gin
+    ON raw_staging.raw_market_intel USING GIN (raw_data);
+
+CREATE INDEX IF NOT EXISTS idx_raw_market_intel_crawled_at
+    ON raw_staging.raw_market_intel (crawled_at DESC);
+
+-- ============================================================
 -- SECURITY: Read-only role for AI SQL proxy
 -- Run manually with secure password in Supabase SQL editor.
 -- ============================================================

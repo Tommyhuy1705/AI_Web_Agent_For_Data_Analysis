@@ -24,3 +24,6 @@ pydantic-settings>=2.5.0
 
 # SSE
 sse-starlette>=2.1.0
+
+# Market Intelligence (TinyFish/AgentQL)
+tinyfish>=0.1.0

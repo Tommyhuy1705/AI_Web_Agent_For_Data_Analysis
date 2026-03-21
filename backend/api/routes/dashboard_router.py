@@ -33,6 +33,7 @@ async def get_dashboard_data() -> Dict[str, Any]:
             _get_customer_segments(),
             _get_daily_revenue_trend(),
             _get_channel_distribution(),
+            _get_competitor_overview(),
             return_exceptions=True,
         )
 
@@ -44,6 +45,7 @@ async def get_dashboard_data() -> Dict[str, Any]:
             "customer_segments",
             "daily_revenue",
             "channel_distribution",
+            "competitor_overview",
         ]
 
         dashboard_data: Dict[str, Any] = {}
@@ -203,3 +205,61 @@ async def _get_channel_distribution() -> Dict[str, Any]:
         },
         "data": aggregated,
     }
+
+
+async def _get_competitor_overview() -> Dict[str, Any]:
+    """Tổng quan giá đối thủ cạnh tranh - Bar chart (từ TinyFish data)."""
+    try:
+        data = await execute_safe_query("""
+            SELECT source, keyword, product_name, price, discount_pct, sold_count, rating
+            FROM competitor_prices
+            ORDER BY crawled_at DESC
+            LIMIT 20
+        """)
+
+        if not data:
+            return {
+                "chart_type": "bar",
+                "title": "Đối thủ cạnh tranh (TinyFish Market Intel)",
+                "description": "Chưa có dữ liệu. Hãy chạy Market Intel Crawl trước.",
+                "config": {
+                    "xAxis": {"dataKey": "product_name", "label": "Sản phẩm"},
+                    "series": [
+                        {"dataKey": "price", "name": "Giá bán", "color": "#EF4444"},
+                    ],
+                },
+                "data": [],
+            }
+
+        # Truncate long product names for chart display
+        for item in data:
+            name = item.get("product_name", "")
+            if len(name) > 30:
+                item["product_name"] = name[:27] + "..."
+
+        return {
+            "chart_type": "bar",
+            "title": "Đối thủ cạnh tranh (TinyFish Market Intel)",
+            "description": f"Top {len(data)} sản phẩm đối thủ gần nhất",
+            "config": {
+                "xAxis": {"dataKey": "product_name", "label": "Sản phẩm đối thủ"},
+                "series": [
+                    {"dataKey": "price", "name": "Giá bán (VNĐ)", "color": "#EF4444"},
+                    {"dataKey": "discount_pct", "name": "Giảm giá (%)", "color": "#F59E0B"},
+                ],
+            },
+            "data": data,
+        }
+
+    except Exception as e:
+        logger.warning(f"Competitor overview query error: {e}")
+        return {
+            "chart_type": "bar",
+            "title": "Đối thủ cạnh tranh (TinyFish Market Intel)",
+            "description": "Lỗi khi truy vấn dữ liệu đối thủ",
+            "config": {
+                "xAxis": {"dataKey": "product_name", "label": "Sản phẩm"},
+                "series": [{"dataKey": "price", "name": "Giá bán", "color": "#EF4444"}],
+            },
+            "data": [],
+        }

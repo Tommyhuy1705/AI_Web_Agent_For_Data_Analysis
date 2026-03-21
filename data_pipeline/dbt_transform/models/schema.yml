@@ -1,5 +1,14 @@
 version: 2
 
+sources:
+  - name: public
+    schema: public
+    tables:
+      - name: raw_market_intel
+        description: "Raw market intelligence data from TinyFish crawlers"
+      - name: raw_sales
+        description: "Raw sales data from mock data loader"
+
 models:
   - name: stg_dim_products
     description: "Dimension table for products, extracted from raw_staging JSONB data"
@@ -48,3 +57,22 @@ models:
         description: "Total transaction amount"
         tests:
           - not_null
+
+  - name: stg_competitor_prices
+    description: "Competitor prices extracted from TinyFish market intelligence crawls (Shopee, Tiki, Alibaba)"
+    columns:
+      - name: competitor_price_id
+        description: "Unique competitor price record identifier"
+        tests:
+          - unique
+          - not_null
+      - name: product_name
+        description: "Competitor product name"
+        tests:
+          - not_null
+      - name: source
+        description: "Data source (shopee, tiki, alibaba)"
+        tests:
+          - not_null
+      - name: price
+        description: "Current selling price in VND"

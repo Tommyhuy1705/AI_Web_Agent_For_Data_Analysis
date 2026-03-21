@@ -32,6 +32,7 @@ from backend.api.routes.chat_router import router as chat_router
 from backend.api.routes.sql_proxy import router as sql_router
 from backend.api.routes.predict_router import router as predict_router
 from backend.api.routes.dashboard_router import router as dashboard_router
+from backend.api.routes.market_intel_router import router as market_intel_router
 from backend.services.db_executor import get_pool, close_pool
 from backend.services.alarm_monitor import (
     check_hourly_revenue_alarm,
@@ -39,6 +40,7 @@ from backend.services.alarm_monitor import (
 )
 from backend.services.dbt_runner import daily_dbt_run
 from backend.services.monthly_report import generate_monthly_report
+from backend.services.tinyfish_service import is_configured as tinyfish_configured
 
 # ============================================================
 # Logging Configuration
@@ -107,8 +109,22 @@ async def lifespan(app: FastAPI):
         replace_existing=True,
     )
 
+    # TinyFish Market Intel Crawl - mỗi 6 giờ (nếu đã cấu hình API key)
+    if tinyfish_configured():
+        from backend.services.tinyfish_service import run_competitor_crawl
+        scheduler.add_job(
+            run_competitor_crawl,
+            trigger=IntervalTrigger(hours=6),
+            id="tinyfish_market_crawl",
+            name="TinyFish Market Intelligence Crawl (every 6h)",
+            replace_existing=True,
+        )
+        logger.info("TinyFish market crawl scheduled (every 6 hours)")
+    else:
+        logger.info("TinyFish not configured - market crawl disabled")
+
     scheduler.start()
-    logger.info("APScheduler started - Hourly alarm + Daily dbt + Monthly report enabled")
+    logger.info("APScheduler started - Hourly alarm + Daily dbt + Monthly report + Market Intel enabled")
 
     yield
 
@@ -158,6 +174,7 @@ app.include_router(chat_router)
 app.include_router(sql_router)
 app.include_router(predict_router)
 app.include_router(dashboard_router)
+app.include_router(market_intel_router)
 
 
 # ============================================================
@@ -187,6 +204,10 @@ async def health():
             "provider": get_provider(),
             "model": get_model(),
             "configured": is_configured(),
+        },
+        "tinyfish": {
+            "configured": tinyfish_configured(),
+            "purpose": "Market Intelligence (Competitor Tracking)",
         },
         "scheduler": {
             "running": scheduler.running,
