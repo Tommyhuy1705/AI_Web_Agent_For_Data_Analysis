@@ -7,10 +7,10 @@ export default function Sidebar() {
   const pathname = usePathname();
 
   const links = [
-    { name: "Trợ lý SIA", href: "/", icon: MessageSquare },
-    { name: "Tổng quan", href: "/dashboard", icon: LayoutDashboard },
-    { name: "Nguồn dữ liệu", href: "#", icon: Database },
-    { name: "Khách hàng", href: "#", icon: Users },
+    { name: "SIA Assistant", href: "/", icon: MessageSquare },
+    { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+    { name: "Data Sources", href: "#", icon: Database },
+    { name: "Customers", href: "#", icon: Users },
   ];
 
   return (
@@ -52,8 +52,8 @@ export default function Sidebar() {
             A
           </div>
           <div className="flex flex-col">
-            <span className="text-sm font-semibold text-white tracking-wide">Quản trị viên</span>
-            <span className="text-[11px] font-medium text-indigo-400 uppercase tracking-wider">Doanh nghiệp</span>
+            <span className="text-sm font-semibold text-white tracking-wide">Admin</span>
+            <span className="text-[11px] font-medium text-indigo-400 uppercase tracking-wider">Enterprise</span>
           </div>
         </div>
       </div>

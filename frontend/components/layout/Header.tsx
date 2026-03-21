@@ -15,7 +15,7 @@ export default function Header() {
         </div>
         <input 
           type="text" 
-          placeholder="Yêu cầu SIA phân tích dữ liệu, hoặc tìm kiếm..." 
+          placeholder="Ask SIA to analyze data, or search..." 
           className="w-full bg-slate-100/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800/80 rounded-full py-2.5 pl-11 pr-4 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500/50 transition-all text-slate-700 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 shadow-sm"
         />
         <div className="absolute inset-y-0 right-3 flex items-center">
@@ -32,7 +32,7 @@ export default function Header() {
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
           </div>
-          <span className="text-[11px] font-bold tracking-wider text-emerald-600 dark:text-emerald-400">Đã kết nối</span>
+          <span className="text-[11px] font-bold tracking-wider text-emerald-600 dark:text-emerald-400">Connected</span>
         </div>
         
         <div className="w-[1px] h-6 bg-slate-200 dark:bg-slate-800 mx-2 hidden sm:block"></div>

@@ -1,6 +1,6 @@
 /**
  * DynamicChart Component
- * Nhận JSON config, tự động render thành biểu đồ tương tác.
+ * Nhận JSON config, tự động render thành chart tương tác.
  * Hỗ trợ: bar, line, pie, area, scatter, composed, table.
  * Có toggle button để chuyển đổi giữa Chart view và Data Table view.
  */
@@ -122,7 +122,7 @@ export default function DynamicChart({ config: propConfig }: DynamicChartProps) 
         </table>
         {data.length > 200 && (
           <div className="text-center text-xs text-muted-foreground py-2">
-            Hiển thị 200/{data.length} dòng
+            Showing 200/{data.length} rows
           </div>
         )}
       </div>
@@ -144,8 +144,8 @@ export default function DynamicChart({ config: propConfig }: DynamicChartProps) 
       return (
         <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
           <BarChart3 className="w-12 h-12 mb-3" />
-          <p className="text-sm">Chưa có biểu đồ nào</p>
-          <p className="text-xs mt-1">Hãy đặt câu hỏi để tạo biểu đồ phân tích</p>
+          <p className="text-sm">No charts available</p>
+          <p className="text-xs mt-1">Ask a question to generate analytical charts</p>
         </div>
       );
     }
@@ -215,10 +215,18 @@ export default function DynamicChart({ config: propConfig }: DynamicChartProps) 
                 cx="50%"
                 cy="50%"
                 outerRadius="70%"
-                label={({ name, percent }) =>
-                  `${name}: ${(percent * 100).toFixed(1)}%`
-                }
-                labelLine={{ strokeWidth: 1 }}
+                label={({ cx, cy, midAngle, innerRadius, outerRadius, percent, index }) => {
+                  const RADIAN = Math.PI / 180;
+                  const radius = outerRadius * 1.15;
+                  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                  return (
+                    <text x={x} y={y} fill={COLORS[index % COLORS.length]} textAnchor={x > cx ? "start" : "end"} dominantBaseline="central">
+                      {(percent * 100).toFixed(1)}%
+                    </text>
+                  );
+                }}
+                labelLine={{ strokeWidth: 1, stroke: "#64748b" }}
               >
                 {data.map((_: any, i: number) => (
                   <Cell key={i} fill={COLORS[i % COLORS.length]} />
@@ -343,7 +351,7 @@ export default function DynamicChart({ config: propConfig }: DynamicChartProps) 
       default:
         return (
           <div className="flex items-center justify-center h-full text-muted-foreground">
-            <p className="text-sm">Loại biểu đồ không được hỗ trợ: {chart_type}</p>
+            <p className="text-sm">Unsupported chart type: {chart_type}</p>
           </div>
         );
     }
@@ -370,7 +378,7 @@ export default function DynamicChart({ config: propConfig }: DynamicChartProps) 
                     ? "bg-background shadow-sm text-primary"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
-                title="Xem biểu đồ"
+                title="View chart"
               >
                 <BarChart3 className="w-3.5 h-3.5" />
               </button>
@@ -381,14 +389,14 @@ export default function DynamicChart({ config: propConfig }: DynamicChartProps) 
                     ? "bg-background shadow-sm text-primary"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
-                title="Xem bảng dữ liệu"
+                title="View data table"
               >
                 <Table className="w-3.5 h-3.5" />
               </button>
             </div>
 
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-              {viewMode === "table" ? `${config.data.length} dòng` : config.chart_type}
+              {viewMode === "table" ? `${config.data.length} rows` : config.chart_type}
             </span>
             <button
               onClick={() => setActiveChart(null)}
@@ -410,7 +418,7 @@ export default function DynamicChart({ config: propConfig }: DynamicChartProps) 
       {/* Chart History */}
       {chartHistory.length > 1 && (
         <div className="border-t px-4 py-2">
-          <p className="text-[10px] text-muted-foreground mb-1">Lịch sử biểu đồ:</p>
+          <p className="text-[10px] text-muted-foreground mb-1">Chart history:</p>
           <div className="flex gap-1 overflow-x-auto">
             {chartHistory.slice(-5).map((chart, i) => (
               <button
