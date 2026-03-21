@@ -6,29 +6,6 @@ import {
   MessageSquareText, Search, Database, ChevronDown, ChevronRight,
   Check, Copy, History, PlusCircle, MessageSquare, Trash2, X, Clock,
   Mic, MicOff, Volume2, VolumeX, AlertCircle,
-  Send,
-  Bot,
-  User,
-  Sparkles,
-  Loader2,
-  BarChart2,
-  CheckCircle2,
-  MessageSquareText,
-  Search,
-  Database,
-  ChevronDown,
-  ChevronRight,
-  Check,
-  Copy,
-  History,
-  PlusCircle,
-  MessageSquare,
-  Trash2,
-  X,
-  Clock,
-  Mic,
-  Volume2,
-  VolumeX,
 } from "lucide-react";
 import { useAgentStore, ChatSession, ChatMessage as ChatMessageType } from "@/store/useAgentStore";
 import { useAgentStream } from "@/hooks/useAgentStream";
@@ -724,13 +701,12 @@ export default function ChatInterface() {
                     ? "bg-red-500 hover:bg-red-600 text-white shadow-md shadow-red-500/30 animate-pulse"
                     : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400"
                 )}
-            <div className="absolute right-1.5 top-1.5 bottom-1.5 flex items-center gap-1">
-              <button
-                type="button"
-                className="w-[36px] h-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full flex items-center justify-center transition-all disabled:opacity-40"
               >
-                <Mic className="w-4 h-4" />
+                {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
               </button>
+            )}
+
+            <div className="absolute right-1.5 top-1.5 bottom-1.5 flex items-center gap-1">
               <button
                 type="submit"
                 disabled={!input.trim() || isTyping}
@@ -765,8 +741,11 @@ export default function ChatInterface() {
           <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
             AI có thể nhầm lẫn. Hãy xác minh các dữ liệu quan trọng trước khi ra quyết định.
           </span>
-        <div className="text-center mt-3">
-          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">AI can make mistakes. Verify important data before making decisions.</span>
+        </div>
+        <div className="text-center mt-1">
+          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+            AI can make mistakes. Verify important data before making decisions.
+          </span>
         </div>
       </div>
     </div>
