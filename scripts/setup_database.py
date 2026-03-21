@@ -12,7 +12,7 @@ import json
 import os
 import random
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
@@ -220,6 +220,8 @@ PAYMENT_METHODS = ["credit_card", "bank_transfer", "momo", "zalopay", "cod"]
 def generate_sales_records(product_ids: list, customer_ids: list, count: int = 500) -> list:
     """Generate mock sales records."""
     records = []
+    utc_now = datetime.now(timezone.utc)
+
     for _ in range(count):
         product_id = random.choice(product_ids)
         customer_id = random.choice(customer_ids)
@@ -230,10 +232,13 @@ def generate_sales_records(product_ids: list, customer_ids: list, count: int = 5
         total_amount = unit_price * quantity * (1 - discount / 100)
 
         days_ago = random.randint(0, 365)
-        order_date = (datetime.now() - timedelta(days=days_ago)).strftime("%Y-%m-%d")
+        seconds_ago = random.randint(0, 86399)
+        order_dt = utc_now - timedelta(days=days_ago, seconds=seconds_ago)
+        order_date = order_dt.date().isoformat()
 
         records.append({
             "order_date": order_date,
+            "created_at": order_dt.isoformat(),
             "product_id": product_id,
             "customer_id": customer_id,
             "quantity": quantity,

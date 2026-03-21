@@ -18,7 +18,7 @@ SendGrid Integration:
 import json
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -52,6 +52,11 @@ def set_alarm_event_queue(queue):
     """Set event queue cho SSE alarm notifications."""
     global _alarm_event_queue
     _alarm_event_queue = queue
+
+
+def _utc_now_iso() -> str:
+    """Return ISO-8601 timestamp in UTC with timezone info."""
+    return datetime.now(timezone.utc).isoformat()
 
 
 async def check_hourly_revenue_alarm():
@@ -151,7 +156,7 @@ async def _upsert_snapshot(
                 "value": current_value,
                 "previous_value": previous_value,
                 "change_pct": round(change_pct, 4),
-                "last_updated": datetime.utcnow().isoformat(),
+                "last_updated": _utc_now_iso(),
             },
             schema="public",
         )
@@ -178,7 +183,7 @@ async def _trigger_alarm(
         "current_revenue": current_revenue,
         "previous_revenue": previous_revenue,
         "change_pct": round(change_pct, 2),
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": _utc_now_iso(),
         "message": f"Cảnh báo: Doanh thu giảm {abs(change_pct):.1f}% so với giờ trước "
                    f"(Hiện tại: {current_revenue:,.0f} VNĐ, Trước đó: {previous_revenue:,.0f} VNĐ)"
     }
