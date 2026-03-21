@@ -89,12 +89,12 @@ async def lifespan(app: FastAPI):
         replace_existing=True,
     )
 
-    # dbt run cron job - mỗi ngày lúc 00:00 UTC
+    # dbt run - TEST MODE: chạy mỗi 2 phút (đổi lại CronTrigger(hour=0, minute=0) sau khi test)
     scheduler.add_job(
         daily_dbt_run,
-        trigger=CronTrigger(hour=0, minute=0),
+        trigger=IntervalTrigger(minutes=2),
         id="daily_dbt_run",
-        name="Daily dbt Run (midnight)",
+        name="dbt Run (every 2 min - TEST MODE)",
         replace_existing=True,
     )
 
