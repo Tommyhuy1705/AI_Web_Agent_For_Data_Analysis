@@ -1,0 +1,2 @@
+with open("frontend/app/globals.css", "a") as f:
+    f.write("\n.custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }\n.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }\n.custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(150, 150, 150, 0.3); border-radius: 4px; }\n.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(150, 150, 150, 0.5); }\n")

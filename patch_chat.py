@@ -1,4 +1,7 @@
-"use client";
+import os
+
+with open("frontend/components/agent/ChatInterface.tsx", "w") as f:
+    f.write("""\"use client\";
 
 import React, { useState, useRef, useEffect } from "react";
 import { Send, Bot, User, Sparkles, Loader2, BarChart2, CheckCircle2, MessageSquareText, Search } from "lucide-react";
@@ -48,9 +51,9 @@ export default function ChatInterface() {
           </div>
           <div>
             <h2 className="text-[15px] font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2 tracking-tight">
-              Trợ lý SIA <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              SIA Assistant <Sparkles className="w-3.5 h-3.5 text-amber-500" />
             </h2>
-            <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">AI Phân tích dữ liệu</p>
+            <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Enterprise AI Analyst</p>
           </div>
         </div>
       </div>
@@ -62,9 +65,9 @@ export default function ChatInterface() {
             <div className="w-20 h-20 mb-6 bg-gradient-to-br from-indigo-50 dark:from-indigo-900/20 to-purple-50 dark:to-purple-900/20 rounded-full flex items-center justify-center border border-indigo-100 dark:border-indigo-800/50 shadow-inner">
               <Bot className="w-10 h-10 text-indigo-500/80" />
             </div>
-            <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100 mb-2">Tôi có thể giúp gì cho bạn hôm nay?</h3>
+            <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100 mb-2">How can I help you today?</h3>
             <p className="text-slate-500 dark:text-slate-400 text-sm max-w-sm mb-8 leading-relaxed">
-              Tôi có thể phân tích số liệu tài chính, tra cứu mét khối khách hàng, tìm hiểu sản phẩm hoặc tạo dashboard thống kê.
+              I can analyze enterprise revenue data, look up customer metrics, retrieve product insights, or generate comprehensive analytical dashboards.
             </p>
             
             <div className="grid grid-cols-1 w-full max-w-md gap-3 text-left">
@@ -73,21 +76,21 @@ export default function ChatInterface() {
                 className="group flex gap-3 p-3.5 px-4 rounded-2xl bg-white dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/50 hover:bg-indigo-50/50 hover:border-indigo-200 dark:hover:bg-indigo-900/20 dark:hover:border-indigo-800 transition-all shadow-sm hover:shadow"
               >
                 <BarChart2 className="w-5 h-5 text-indigo-500 shrink-0 group-hover:scale-110 transition-transform" />
-                <span className="text-sm text-slate-600 dark:text-slate-300 font-medium">Phân tích doanh thu tháng này so với tháng trước</span>
+                <span className="text-sm text-slate-600 dark:text-slate-300 font-medium">Analyze revenue performance this month vs last month</span>
               </button>
               <button 
                 onClick={() => handleSuggestionClick("Top 5 sản phẩm bán chạy nhất là gì?")}
                 className="group flex gap-3 p-3.5 px-4 rounded-2xl bg-white dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/50 hover:bg-emerald-50/50 hover:border-emerald-200 dark:hover:bg-emerald-900/20 dark:hover:border-emerald-800 transition-all shadow-sm hover:shadow"
               >
                 <Search className="w-5 h-5 text-emerald-500 shrink-0 group-hover:scale-110 transition-transform" />
-                <span className="text-sm text-slate-600 dark:text-slate-300 font-medium">Top 5 sản phẩm có doanh thu cao nhất</span>
+                <span className="text-sm text-slate-600 dark:text-slate-300 font-medium">Find the top 5 highest selling products</span>
               </button>
               <button 
                 onClick={() => handleSuggestionClick("Tạo dashboard tổng quan về tình hình kinh doanh")}
                 className="group flex gap-3 p-3.5 px-4 rounded-2xl bg-white dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/50 hover:bg-amber-50/50 hover:border-amber-200 dark:hover:bg-amber-900/20 dark:hover:border-amber-800 transition-all shadow-sm hover:shadow"
               >
                 <Sparkles className="w-5 h-5 text-amber-500 shrink-0 group-hover:scale-110 transition-transform" />
-                <span className="text-sm text-slate-600 dark:text-slate-300 font-medium">Tạo dashboard báo cáo tình hình kinh doanh tổng quan</span>
+                <span className="text-sm text-slate-600 dark:text-slate-300 font-medium">Generate a complete executive dashboard</span>
               </button>
             </div>
           </div>
@@ -131,10 +134,10 @@ export default function ChatInterface() {
                   {msg.role === "assistant" && msg.metadata?.action_type && (
                     <div className="flex flex-col gap-1.5 mb-2 mt-1 w-full bg-slate-50/50 dark:bg-slate-900/50 p-2.5 rounded-xl border border-slate-100/50 dark:border-slate-700/30">
                       <div className="flex items-center gap-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Đã tra cứu {msg.metadata.action_type === 'sql' ? 'Cơ sở dữ liệu' : 'Tài nguyên tri thức'}
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Checked {msg.metadata.action_type === 'sql' ? 'Database' : 'Knowledge Base'}
                       </div>
                       <div className="text-[11px] text-slate-500 bg-white/50 dark:bg-[#111827]/50 p-1.5 rounded-md font-mono truncate max-w-full">
-                        {msg.metadata.action_input ? (typeof msg.metadata.action_input === 'string' ? msg.metadata.action_input : JSON.stringify(msg.metadata.action_input)) : "Đã thực thi..."}
+                        {msg.metadata.action_input ? (typeof msg.metadata.action_input === 'string' ? msg.metadata.action_input : JSON.stringify(msg.metadata.action_input)) : "Executed..."}
                       </div>
                     </div>
                   )}
@@ -154,7 +157,7 @@ export default function ChatInterface() {
                   {msg.metadata?.isDashboard && (
                     <div className="mt-3 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 text-indigo-700 dark:text-indigo-400 text-[13px] font-medium select-none shadow-sm pb-2 cursor-default">
                       <BarChart2 className="w-4 h-4" /> 
-                      Đã tạo {msg.metadata.allCharts?.length || 0} biểu đồ trên bảng phân tích
+                      Generated {msg.metadata.allCharts?.length || 0} charts on canvas
                     </div>
                   )}
                 </div>
@@ -197,7 +200,7 @@ export default function ChatInterface() {
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Hỏi SIA bất kỳ về số liệu nào..."
+              placeholder="Ask SIA to analyze anything..."
               disabled={isTyping}
               className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-full py-3.5 pl-11 pr-16 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500/50 transition-all font-medium disabled:opacity-50 text-slate-700 dark:text-slate-200 placeholder:text-slate-400 shadow-inner"
             />
@@ -211,9 +214,10 @@ export default function ChatInterface() {
           </div>
         </form>
         <div className="text-center mt-3">
-          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">AI có thể nhầm lẫn. Hãy xác minh các dữ liệu quan trọng trước khi ra quyết định.</span>
+          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">SIA Enterprise Analyst can make mistakes. Verify critical data.</span>
         </div>
       </div>
     </div>
   );
 }
+""")

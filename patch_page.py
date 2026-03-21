@@ -1,4 +1,5 @@
-"use client";
+with open("frontend/app/page.tsx", "w") as f:
+    f.write("""\"use client\";
 
 import { useEffect, useMemo } from "react";
 import ChatInterface from "@/components/agent/ChatInterface";
@@ -9,7 +10,7 @@ import { LayoutDashboard, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function Home() {
-  const { alarms, unreadAlarmCount, messages, markAlarmRead, activeChart } = useAgentStore();
+  const { alarms, unreadAlarmCount, messages, markAlarmRead } = useAgentStore();
   const { subscribeAlarms, unsubscribeAlarms } = useAgentStream();
 
   useEffect(() => {
@@ -44,9 +45,9 @@ export default function Home() {
                   </div>
                   <div>
                     <h2 className="text-xl font-bold tracking-tight text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                      Bảng Phân Tích SIA <Sparkles className="w-4 h-4 text-amber-500" />
+                      SIA Analysis Canvas <Sparkles className="w-4 h-4 text-amber-500" />
                     </h2>
-                    <p className="text-sm font-medium text-slate-500 mt-1">Insights từ AI • Hiển thị {dashboardCharts.length} chỉ số</p>
+                    <p className="text-sm font-medium text-slate-500 mt-1">AI-Generated Insights • {dashboardCharts.length} metrics visualized</p>
                   </div>
                 </div>
               </div>
@@ -63,20 +64,14 @@ export default function Home() {
                 ))}
               </div>
             </div>
-          ) : activeChart ? (
-            <div className="h-full w-full flex items-center justify-center p-8 bg-slate-50/20 dark:bg-transparent">
-              <div className="w-full h-full bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-700/50 rounded-2xl shadow-sm overflow-hidden flex flex-col">
-                <DynamicChart />
-              </div>
-            </div>
           ) : (
             <div className="h-full w-full flex flex-col items-center justify-center p-8 bg-slate-50/20 dark:bg-transparent text-center">
               <div className="w-24 h-24 mb-6 rounded-3xl bg-indigo-500/5 flex items-center justify-center border border-indigo-500/10">
                 <Sparkles className="w-10 h-10 text-indigo-400 opacity-60" />
               </div>
-              <h3 className="text-xl font-semibold text-slate-700 dark:text-slate-200 mb-2">Sẵn sàng phân tích dữ liệu</h3>
+              <h3 className="text-xl font-semibold text-slate-700 dark:text-slate-200 mb-2">Connect to your data</h3>
               <p className="text-slate-500 dark:text-slate-400 max-w-md">
-                Chọn trợ lý bên trái hoặc nhập câu hỏi để bắt đầu. SIA sẽ tự động phân tích và tạo biểu đồ, cảnh báo.
+                Select an agent on the left or type a query to begin. SIA will automatically generate visual dashboards, alerts, and insights.
               </p>
             </div>
           )}
@@ -109,7 +104,7 @@ export default function Home() {
                     {alarm.naturalMessage || alarm.message}
                   </p>
                   <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                    Cảnh báo hệ thống SIA • {new Date(alarm.timestamp).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                    SIA System Alert • {new Date(alarm.timestamp).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                   </p>
                 </div>
                 {!alarm.read && (
@@ -125,3 +120,4 @@ export default function Home() {
     </div>
   );
 }
+""")
