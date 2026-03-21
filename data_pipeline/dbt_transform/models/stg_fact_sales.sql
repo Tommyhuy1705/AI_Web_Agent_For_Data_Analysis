@@ -26,7 +26,7 @@ WITH raw_sales AS (
         data->>'channel' AS channel,
         data->>'payment_method' AS payment_method,
         data->>'status' AS status
-    FROM raw_staging.raw_sales
+    FROM public.raw_sales
     WHERE data->>'status' = 'completed'
 ),
 

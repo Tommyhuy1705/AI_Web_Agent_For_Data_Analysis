@@ -18,7 +18,7 @@ WITH raw_customers AS (
         data->'customer'->>'segment' AS segment,
         data->'customer'->>'region' AS region,
         data->'customer'->>'city' AS city
-    FROM raw_staging.raw_sales
+    FROM public.raw_sales
     WHERE data->'customer'->>'name' IS NOT NULL
 )
 

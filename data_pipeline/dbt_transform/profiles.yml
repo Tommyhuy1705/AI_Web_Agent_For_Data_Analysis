@@ -3,8 +3,8 @@ omni_revenue:
   outputs:
     dev:
       type: postgres
-      host: "{{ env_var('SUPABASE_DB_HOST', 'aws-0-ap-southeast-1.pooler.supabase.com') }}"
-      port: "{{ env_var('SUPABASE_DB_PORT', '6543') | int }}"
+      host: "{{ env_var('SUPABASE_DB_HOST', 'aws-1-ap-southeast-2.pooler.supabase.com') }}"
+      port: "{{ env_var('SUPABASE_DB_PORT', '5432') | int }}"
       user: "{{ env_var('SUPABASE_DB_USER', 'postgres.qunhqqnmsqiahsrneqcy') }}"
       password: "{{ env_var('SUPABASE_DB_PASSWORD', '') }}"
       dbname: "{{ env_var('SUPABASE_DB_NAME', 'postgres') }}"

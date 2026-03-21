@@ -18,7 +18,7 @@ WITH raw_products AS (
         data->'product'->>'sub_category' AS sub_category,
         data->'product'->>'brand' AS brand,
         (data->'product'->>'unit_price')::NUMERIC(12, 2) AS unit_price
-    FROM raw_staging.raw_sales
+    FROM public.raw_sales
     WHERE data->'product'->>'name' IS NOT NULL
 )
 
