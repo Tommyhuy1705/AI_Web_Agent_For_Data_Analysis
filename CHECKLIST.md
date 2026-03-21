@@ -134,3 +134,65 @@
 | `c7e4067` | feat: add dbt run cron job (daily at midnight) via APScheduler |
 | `7a35220` | feat: add monthly strategy report cron job (1st of month) |
 | `7fb238c` | feat: upgrade alarm_monitor with enhanced SendGrid email, retry logic, AI insight |
+
+---
+
+## Phase 6: TinyFish Integration & System Testing with New Data (2026-03-21)
+
+### Task 1: Data Import & Reset ✅
+- [x] Xóa toàn bộ dữ liệu cũ trong `fact_sales`, `dim_products`, `dim_customers` (bypass FK constraints)
+- [x] Import lại `dim_customers.csv` (1,000 records)
+- [x] Import lại `dim_products.csv` (1,681 records)
+- [x] Import lại `fact_sales.csv` (1,000 records)
+- [x] Pull commit mới nhất từ GitHub (`8e87f91` — TinyFish integration)
+- [x] Load mock data vào `raw_staging.raw_sales` (500 records)
+
+### Task 2: Dashboard Refresh Test ✅
+- [x] Thêm 50 bản ghi `fact_sales` giả (sale_id 1001–1050) với `created_at = NOW()`
+- [x] Xác nhận tổng đơn hàng tăng lên 1,053 records
+- [x] dbt scheduler chạy tự động sau 2 phút (TEST MODE)
+- [x] Dashboard API phản ánh đúng doanh thu ~2.4 tỷ VND sau khi dbt transform
+- [x] **Test PASS: Dashboard refresh hoạt động đúng với data mới**
+
+### Task 3: Alarm System Test ✅
+- [x] Set `hourly_snapshot.value = 7,197,793,530 VND` (3x doanh thu thực tế)
+- [x] Chạy `check_hourly_revenue_alarm()` — phát hiện thay đổi **-66.67%**
+- [x] Alarm kích hoạt thành công (`ALARM TRIGGERED! Revenue dropped 66.67%`)
+- [x] Email cảnh báo gửi thành công qua SendGrid (HTTP 202 Accepted)
+- [x] Người nhận: nqkhanh2925@gmail.com, giahuytranviet.work@gmail.com, thaiitruong220805@gmail.com
+- [x] Snapshot được upsert với giá trị mới (2,399,264,510 VND)
+- [x] **Test PASS: Alarm system gửi email thành công**
+
+### Task 4: TinyFish Crawler Test ✅
+- [x] Cấu hình `TINYFISH_API_KEY=sk-tinyfish-jn6qp8boM-...` vào `backend/.env`
+- [x] Xác định đúng endpoint SSE: `https://agent.tinyfish.ai/v1/automation/run-sse`
+- [x] Crawl Tiki.vn keyword "máy lọc nước" — thu thập 5 sản phẩm competitor
+- [x] Lưu raw data vào `raw_market_intel` (1 record, crawl_type=competitor_price)
+- [x] Lưu chi tiết vào `competitor_prices` (5 records với price, rating, seller)
+- [x] Backend restart nhận diện `tinyfish_configured: true`
+- [x] TinyFish scheduler đăng ký thành công (mỗi 6 giờ)
+- [x] **Test PASS: TinyFish crawl Tiki.vn thành công, dữ liệu lưu vào Supabase**
+
+### Task 5: Bug Fixes ✅
+- [x] Fix: `upsert_via_rest()` lỗi 409 conflict với `hourly_snapshot` — dùng PATCH thay POST
+- [x] Fix: `TINYFISH_API_KEY` không được load bởi backend — thêm key vào `backend/.env`
+- [x] Fix: TinyFish sync endpoint `/run` bị timeout/disconnect — chuyển sang SSE endpoint `/run-sse`
+
+### Dữ liệu Crawl từ TinyFish (Tiki.vn — Máy lọc nước)
+| Sản phẩm | Giá (VND) | Rating |
+|---|---|---|
+| Combo 8 lõi lọc nước Karofi KSI80 | 990,000 | ★5 |
+| Máy lọc nước UF Lõi Lọc PVDF 3000L/h | 2,350,000 | ★0 |
+| Máy Lọc Nước AQUAPHOR CRYSTAL ECO NANO | 8,900,000 | ★5 |
+| Máy lọc nước để bàn RO Philips ADD6910 | 12,960,000 | ★5 |
+| Máy Lọc Nước AQUAPHOR MORION DWM-101S RO | 16,900,000 | ★5 |
+
+### Commits (Phase 6)
+| Commit | Message |
+|--------|----------|
+| `43087a6` | `docs: add CHECKLIST.md phase 6 - TinyFish integration and system testing` |
+| `e7c2a43` | `test(data): reimport CSV data (dim_customers 1000, dim_products 1681, fact_sales 1000) and load 500 mock staging records` |
+| `298562f` | `test(dashboard): add 50 fake sales records script for dashboard refresh test after 2-min dbt scheduler` |
+| `05b5995` | `test(alarm): validate alarm trigger at -66.67% revenue drop, SendGrid email HTTP 202 confirmed` |
+| `ba29977` | `feat(tinyfish): configure TINYFISH_API_KEY and test SSE crawler on Tiki.vn - 5 competitor products crawled` |
+| `5826ea1` | `fix(upsert): document upsert_via_rest 409 conflict bug - use PATCH for hourly_snapshot update to avoid unique constraint violation` |
