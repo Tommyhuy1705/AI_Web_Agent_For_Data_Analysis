@@ -9,7 +9,7 @@ Omni-Revenue Agent cho phép người dùng **chat bằng ngôn ngữ tự nhiê
 ### Kiến trúc hệ thống
 
 | Layer | Công nghệ | Mô tả |
-|-------|-----------|-------|
+| ------- | --------- | ----- |
 | **Frontend** | Next.js 14+, Tailwind CSS, Zustand, Recharts | Generative UI với SSE streaming |
 | **Backend** | FastAPI, asyncpg, APScheduler | API Gateway, SQL Proxy, Cron Jobs |
 | **Database** | Supabase (PostgreSQL) | Zero Data Lake Architecture |
@@ -19,7 +19,7 @@ Omni-Revenue Agent cho phép người dùng **chat bằng ngôn ngữ tự nhiê
 
 ## Cấu trúc thư mục
 
-```
+```bash
 omni-revenue-agent/
 ├── frontend/                    # Next.js App
 │   ├── app/
@@ -72,20 +72,25 @@ omni-revenue-agent/
 ## 4 Core Tasks
 
 ### Task 1: On-Demand Query & Dashboard
+
 User gõ câu hỏi → Dify Agent sinh SQL → SQL Proxy chạy trên Supabase → Visualizer sinh JSON config → DynamicChart render biểu đồ tương tác.
 
 ### Task 2: Automated Data Pipeline
+
 Python scripts crawl data → INSERT vào JSONB `raw_staging` → dbt transform sang `analytics_mart` (fact_sales, dim_products, dim_customers).
 
 ### Task 3: Proactive Alarm
+
 APScheduler chạy mỗi 60 phút → So sánh doanh thu với `hourly_snapshot` → Nếu giảm >15%: webhook Dify + email SendGrid + SSE notification.
 
 ### Task 4: Predictive Analytics
+
 Query time series → Train Polynomial Regression in-memory → Kết hợp ngữ cảnh Zilliz → OpenAI sinh báo cáo insight chiến lược.
 
 ## Cài đặt & Chạy
 
 ### Yêu cầu
+
 - Python 3.11+
 - Node.js 18+
 - Supabase account
@@ -138,7 +143,7 @@ Truy cập: `http://localhost:3000`
 ## API Endpoints
 
 | Method | Endpoint | Mô tả |
-|--------|----------|-------|
+| -------- | ---------- | ----- |
 | GET | `/` | Service info |
 | GET | `/health` | Health check |
 | POST | `/api/chat/stream` | Chat SSE streaming |
@@ -153,7 +158,7 @@ Truy cập: `http://localhost:3000`
 ### Backend (.env)
 
 | Variable | Mô tả |
-|----------|-------|
+| ---------- | ----- |
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_ANON_KEY` | Supabase anon public key |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server-side only) |
@@ -171,14 +176,14 @@ Lưu ý: endpoint `/api/sql/execute` đang dùng asyncpg nên vẫn cần `SUPAB
 ### Frontend (.env.local)
 
 | Variable | Mô tả |
-|----------|-------|
+| ---------- | ----- |
 | `NEXT_PUBLIC_BACKEND_URL` | Backend API URL |
 
 ## Conventional Commits
 
 Dự án tuân thủ [Conventional Commits](https://www.conventionalcommits.org/):
 
-```
+```bash
 feat(backend): implement SQL proxy endpoint
 feat(frontend): add DynamicChart component
 fix(backend): resolve SSE connection timeout
