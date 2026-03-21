@@ -28,6 +28,32 @@ logger = logging.getLogger(__name__)
 TINYFISH_API_KEY = os.getenv("TINYFISH_API_KEY", "")
 TINYFISH_BASE_URL = "https://agent.tinyfish.ai/v1/automation"
 
+# ============================================================
+# Data Limits Configuration
+# ============================================================
+# Crawl modes: quick (speed-optimized) vs full (comprehensive)
+CRAWL_MODE = os.getenv("TINYFISH_CRAWL_MODE", "quick")  # "quick" or "full"
+
+# QUICK MODE: Fast crawl for UI response
+QUICK_MODE_CONFIG = {
+    "max_keywords": 2,           # Crawl only 2 keywords
+    "max_products_per_keyword": 5,  # 5 products per keyword
+    "sources": ["shopee"],       # Only Shopee for speed
+    "timeout": 60,               # Fail fast at 60s
+    "max_total_items": 10,       # Hard limit: 10 items total
+}
+
+# FULL MODE: Comprehensive crawl for background jobs
+FULL_MODE_CONFIG = {
+    "max_keywords": 3,           # Crawl 3 keywords
+    "max_products_per_keyword": 10,  # 10 products per keyword
+    "sources": ["shopee", "tiki"],   # Shopee + Tiki
+    "timeout": 120,              # Standard timeout
+    "max_total_items": 60,       # Hard limit: 60 items total
+}
+
+CRAWL_CONFIG = QUICK_MODE_CONFIG if CRAWL_MODE == "quick" else FULL_MODE_CONFIG
+
 # Default crawl targets - Sản phẩm của doanh nghiệp bán
 DEFAULT_KEYWORDS = [
     "iPhone 15 Pro Max",
@@ -395,10 +421,24 @@ async def save_competitor_prices(
 async def run_competitor_crawl(
     keywords: Optional[List[str]] = None,
     sources: Optional[List[str]] = None,
+    max_products: Optional[int] = None,
+    timeout: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
-    Chạy full competitor crawl cho danh sách keywords trên các nguồn.
-    Returns summary report.
+    Chạy competitor crawl với configurable data limits.
+    
+    Args:
+        keywords: List of keywords to crawl (default: from config)
+        sources: List of sources [shopee, tiki] (default: from config)
+        max_products: Max products per keyword (default: from config)
+        timeout: Timeout per crawl in seconds (default: from config)
+    
+    Returns:
+        Summary report with crawl results.
+    
+    Configuration:
+        - QUICK_MODE: 2 keywords, 5 products, Shopee only, 60s timeout, 10 items max
+        - FULL_MODE: 3 keywords, 10 products, Shopee+Tiki, 120s timeout, 60 items max
     """
     if not is_configured():
         return {
@@ -406,29 +446,55 @@ async def run_competitor_crawl(
             "message": "TinyFish API key not configured. Set TINYFISH_API_KEY in .env",
         }
 
-    keywords = keywords or DEFAULT_KEYWORDS[:3]  # Limit to 3 for demo
-    sources = sources or ["shopee"]
+    # Load configuration based on mode
+    config = CRAWL_CONFIG
+    keywords = keywords or DEFAULT_KEYWORDS[:config["max_keywords"]]
+    sources = sources or config["sources"]
+    max_products = max_products or config["max_products_per_keyword"]
+    timeout = timeout or config["timeout"]
+    
+    logger.info(
+        f"TinyFish crawl starting: mode={CRAWL_MODE}, "
+        f"keywords={len(keywords)}, sources={sources}, "
+        f"max_products={max_products}, timeout={timeout}s"
+    )
 
     report = {
         "status": "completed",
+        "crawl_mode": CRAWL_MODE,
         "started_at": datetime.now(timezone.utc).isoformat(),
         "keywords": keywords,
         "sources": sources,
+        "max_products_per_keyword": max_products,
+        "timeout_seconds": timeout,
         "results": [],
         "total_products_found": 0,
         "total_products_saved": 0,
     }
 
+    total_items = 0
+    max_total_items = config.get("max_total_items", 60)
+
     for keyword in keywords:
+        # Hard limit: stop if we've already processed max items
+        if total_items >= max_total_items:
+            logger.info(f"Hard limit reached ({total_items}/{max_total_items}). Stopping crawl.")
+            break
+
         for source in sources:
-            logger.info(f"Crawling {source} for '{keyword}'...")
+            # Check limit again
+            if total_items >= max_total_items:
+                logger.info(f"Hard limit reached. Skipping {source}/{keyword}")
+                break
+
+            logger.info(f"Crawling {source} for '{keyword}' (limit: {max_products} products)...")
 
             try:
                 # Crawl based on source
                 if source == "shopee":
-                    raw_result = await crawl_shopee_competitors(keyword)
+                    raw_result = await crawl_shopee_competitors(keyword, max_products=max_products)
                 elif source == "tiki":
-                    raw_result = await crawl_tiki_competitors(keyword)
+                    raw_result = await crawl_tiki_competitors(keyword, max_products=max_products)
                 else:
                     logger.warning(f"Unknown source: {source}")
                     continue
@@ -456,6 +522,9 @@ async def run_competitor_crawl(
                 if not products and isinstance(raw_result, list):
                     products = raw_result
 
+                # Enforce per-source limit
+                products = products[:max_products]
+                
                 saved_count = 0
                 if products:
                     saved_count = await save_competitor_prices(
@@ -473,6 +542,11 @@ async def run_competitor_crawl(
                 })
                 report["total_products_found"] += len(products)
                 report["total_products_saved"] += saved_count
+                total_items += len(products)
+
+                # Check if we've hit hard limit
+                if total_items >= max_total_items:
+                    logger.info(f"Hard limit approaching ({total_items}/{max_total_items})")
 
             except Exception as e:
                 logger.error(f"Crawl error for {source}/{keyword}: {e}")
@@ -485,9 +559,9 @@ async def run_competitor_crawl(
 
     report["finished_at"] = datetime.now(timezone.utc).isoformat()
     logger.info(
-        f"Competitor crawl complete: "
+        f"Competitor crawl complete (mode: {CRAWL_MODE}): "
         f"{report['total_products_found']} found, "
-        f"{report['total_products_saved']} saved"
+        f"{report['total_products_saved']} saved (limit: {max_total_items})"
     )
     return report
 
