@@ -9,6 +9,7 @@ Flow:
 4. Kết hợp ngữ cảnh sự kiện (từ Zilliz) + LLM sinh báo cáo insight
 """
 
+import asyncio
 import logging
 import os
 import json
@@ -106,6 +107,30 @@ class TimeSeriesPredictor:
         return predictions
 
 
+def _compute_prediction_sync(
+    dates: List[str],
+    values: List[float],
+    periods: int,
+    period_type: str,
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]], float]:
+    """Run CPU-bound model training/prediction synchronously (for thread pool offloading)."""
+    predictor = TimeSeriesPredictor(degree=2)
+    metrics = predictor.fit(dates, values)
+
+    period_days = 30 if period_type == "month" else 90
+    predictions = predictor.predict(
+        future_periods=periods,
+        period_days=period_days,
+    )
+
+    if len(values) >= 2:
+        recent_trend = ((values[-1] - values[-2]) / values[-2]) * 100 if values[-2] != 0 else 0
+    else:
+        recent_trend = 0
+
+    return metrics, predictions, recent_trend
+
+
 async def predict_revenue(
     historical_data: List[Dict[str, Any]] = None,
     periods: int = 3,
@@ -132,19 +157,13 @@ async def predict_revenue(
         dates = [d["date"] if isinstance(d["date"], str) else str(d["date"]) for d in historical_data]
         values = [float(d["revenue"]) for d in historical_data]
 
-        predictor = TimeSeriesPredictor(degree=2)
-        metrics = predictor.fit(dates, values)
-
-        period_days = 30 if period_type == "month" else 90
-        predictions = predictor.predict(
-            future_periods=periods,
-            period_days=period_days
+        metrics, predictions, recent_trend = await asyncio.to_thread(
+            _compute_prediction_sync,
+            dates,
+            values,
+            periods,
+            period_type,
         )
-
-        if len(values) >= 2:
-            recent_trend = ((values[-1] - values[-2]) / values[-2]) * 100 if values[-2] != 0 else 0
-        else:
-            recent_trend = 0
 
         result = {
             "predictions": [
