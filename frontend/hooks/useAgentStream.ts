@@ -53,6 +53,8 @@ export function useAgentStream(): UseAgentStreamReturn {
     setStatusMessage,
     addAlarm,
     conversationId,
+    sessionId,
+    setSessionId,
   } = useAgentStore();
 
   /**
@@ -147,6 +149,10 @@ export function useAgentStream(): UseAgentStreamReturn {
           switch (event) {
             case "start":
               setStatusMessage("Bắt đầu xử lý...");
+              // Cập nhật session_id từ backend nếu backend tạo session mới
+              if ((data as any).session_id && !(data as any).session_id === sessionId) {
+                setSessionId((data as any).session_id);
+              }
               break;
 
             case "status":
@@ -276,6 +282,7 @@ export function useAgentStream(): UseAgentStreamReturn {
               message,
               conversation_id: conversationId,
               user_id: "default_user",
+              session_id: sessionId,  // Truyền session_id cho Chat History
             }),
             signal: controller.signal,
           });

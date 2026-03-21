@@ -135,6 +135,7 @@ class ChatRequest(BaseModel):
     message: str = Field(..., description="User message/question")
     conversation_id: Optional[str] = Field(None, description="Conversation ID for context")
     user_id: str = Field(default="default_user", description="User identifier")
+    session_id: Optional[str] = Field(None, description="Chat session ID for history & context memory")
 
 
 class ChatMessage(BaseModel):
@@ -592,19 +593,72 @@ async def chat_stream(request: ChatRequest):
     """
     Chat endpoint với SSE streaming.
     Frontend gọi endpoint này và nhận stream events.
+    Hỗ trợ Chat History & Context Memory qua session_id.
     """
     logger.info(f"Chat request from {request.user_id}: {request.message[:100]}...")
 
     async def event_generator():
+        from backend.services.chat_history_service import (
+            create_session, save_message, get_context_messages, auto_generate_title
+        )
+
+        # ── Chat History: khởi tạo hoặc lấy session ────────────────────────────────
+        session_id = request.session_id
+        is_new_session = False
+        if not session_id:
+            # Tự động tạo session nếu frontend chưa gửi session_id
+            try:
+                session = await create_session(user_id=request.user_id)
+                session_id = session.get("session_id", str(uuid.uuid4()))
+                is_new_session = True
+            except Exception:
+                session_id = str(uuid.uuid4())
+
+        message_id = str(uuid.uuid4())
         yield await _stream_sse_event("start", {
-            "message_id": str(uuid.uuid4()),
+            "message_id": message_id,
             "user_message": request.message,
+            "session_id": session_id,
         })
+
+        # Lưu user message vào history
+        try:
+            await save_message(
+                session_id=session_id,
+                role="user",
+                content=request.message,
+                metadata={"message_id": message_id},
+            )
+            # Tự động đặt tiêu đề session từ message đầu tiên
+            if is_new_session:
+                asyncio.create_task(auto_generate_title(session_id, request.message))
+        except Exception as e:
+            logger.warning(f"Failed to save user message to history: {e}")
+
+        # Lấy context từ lịch sử hội thoại (trừ message vừa gửi)
+        context_messages = []
+        try:
+            context_messages = await get_context_messages(session_id)
+            # Loại bỏ message vừa gửi (message cuối cùng) khỏi context
+            if context_messages and context_messages[-1].get("content") == request.message:
+                context_messages = context_messages[:-1]
+        except Exception as e:
+            logger.warning(f"Failed to get context messages: {e}")
+
+        # ── Collect assistant response để lưu vào history ──────────────────────────
+        assistant_response_parts = []
 
         # Route to predict, dashboard, or query based on intent
         if _is_predict_request(request.message):
             async for event in _process_predict(request.message, request.user_id):
                 yield event
+                # Thu thập insight từ predict response
+                try:
+                    parsed = json.loads(event.split("data: ", 1)[1]) if "data: " in event else {}
+                    if "text" in parsed:
+                        assistant_response_parts.append(parsed["text"])
+                except Exception:
+                    pass
         elif _is_dashboard_request(request.message):
             async for event in _process_dashboard(request.message, request.user_id):
                 yield event
@@ -615,8 +669,31 @@ async def chat_stream(request: ChatRequest):
                 user_id=request.user_id,
             ):
                 yield event
+                # Thu thập text response từ Dify/Direct
+                try:
+                    if "data: " in event:
+                        parsed = json.loads(event.split("data: ", 1)[1])
+                        if "text" in parsed:
+                            assistant_response_parts.append(parsed["text"])
+                        elif "insight" in parsed:
+                            assistant_response_parts.append(str(parsed["insight"]))
+                except Exception:
+                    pass
 
-        yield await _stream_sse_event("done", {"status": "completed"})
+        # Lưu assistant response vào history
+        if assistant_response_parts:
+            assistant_content = " ".join(assistant_response_parts)
+            try:
+                await save_message(
+                    session_id=session_id,
+                    role="assistant",
+                    content=assistant_content[:4000],  # Giới hạn 4000 ky tự
+                    metadata={"message_id": message_id},
+                )
+            except Exception as e:
+                logger.warning(f"Failed to save assistant message to history: {e}")
+
+        yield await _stream_sse_event("done", {"status": "completed", "session_id": session_id})
 
     return StreamingResponse(
         event_generator(),

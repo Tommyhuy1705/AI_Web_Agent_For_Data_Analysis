@@ -456,3 +456,68 @@ async def _push_sse_alarm(alarm_data: Dict[str, Any]):
             logger.error(f"SSE push error: {e}")
     else:
         logger.info("No SSE queue configured, alarm event not pushed")
+
+
+async def check_smart_alarm_morning():
+    """
+    Smart Alarm chạy lúc 08:00 sáng mỗi ngày.
+    So sánh doanh thu hiện tại với baseline 18:00 hôm qua.
+    Chỉ gửi cảnh báo nếu % thay đổi vượt ngưỡng ALARM_THRESHOLD_PCT (mặc định 15%).
+    """
+    logger.info("[SmartAlarm] Running morning smart alarm check at 08:00...")
+    try:
+        # Lấy doanh thu hiện tại (từ đầu ngày đến 08:00)
+        current_revenue = await _get_current_hour_revenue()
+        if current_revenue is None:
+            logger.warning("[SmartAlarm] Could not get current revenue, skipping.")
+            return
+
+        # Lấy snapshot baseline (18:00 hôm qua)
+        snapshot = await _get_previous_snapshot("morning_baseline_revenue")
+        if snapshot is None:
+            # Lần đầu chạy: lưu snapshot và không gửi alarm
+            await _upsert_snapshot(
+                metric_name="morning_baseline_revenue",
+                current_value=current_revenue,
+                previous_value=0,
+                change_pct=0,
+            )
+            logger.info(f"[SmartAlarm] First run: saved baseline = {current_revenue:,.0f} VND")
+            return
+
+        baseline_revenue = float(snapshot.get("value", 0))
+        if baseline_revenue <= 0:
+            logger.warning("[SmartAlarm] Baseline revenue is 0, skipping alarm check.")
+            return
+
+        change_pct = ((current_revenue - baseline_revenue) / baseline_revenue) * 100
+        logger.info(
+            f"[SmartAlarm] Baseline: {baseline_revenue:,.0f} VND | "
+            f"Current: {current_revenue:,.0f} VND | "
+            f"Change: {change_pct:.2f}%"
+        )
+
+        # Chỉ trigger alarm nếu vượt ngưỡng
+        if abs(change_pct) >= ALARM_THRESHOLD_PCT:
+            logger.warning(f"[SmartAlarm] ALARM TRIGGERED! Change = {change_pct:.2f}%")
+            await _trigger_alarm(
+                current_revenue=current_revenue,
+                previous_revenue=baseline_revenue,
+                change_pct=change_pct,
+            )
+        else:
+            logger.info(
+                f"[SmartAlarm] No alarm needed. "
+                f"Change {change_pct:.2f}% < threshold {ALARM_THRESHOLD_PCT}%"
+            )
+
+        # Cập nhật baseline cho ngày hôm sau
+        await _upsert_snapshot(
+            metric_name="morning_baseline_revenue",
+            current_value=current_revenue,
+            previous_value=baseline_revenue,
+            change_pct=change_pct,
+        )
+
+    except Exception as e:
+        logger.error(f"[SmartAlarm] Error in morning smart alarm: {e}", exc_info=True)
