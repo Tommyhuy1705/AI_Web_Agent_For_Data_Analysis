@@ -155,14 +155,19 @@ jobs:
             BACKEND_ENV_FILE="/opt/sia/.env.backend"
             BACKEND_ENV_TEMPLATE="/opt/sia/backend/.env.example"
             if [ -n "${BACKEND_ENV_BASE64:-}" ]; then
+              BACKEND_ENV_CLEAN="$(printf '%s' "$BACKEND_ENV_BASE64" | tr -d '\n\r')"
+              if ! printf '%s' "$BACKEND_ENV_CLEAN" | grep -Eq '^[A-Za-z0-9+/=]+$'; then
+                echo "❌ BACKEND_ENV_BASE64 contains invalid characters." >&2
+                exit 1
+              fi
               TMP_ENV_FILE="$(mktemp)"
-              if printf '%s' "$BACKEND_ENV_BASE64" | base64 --decode > "$TMP_ENV_FILE"; then
+              if printf '%s' "$BACKEND_ENV_CLEAN" | base64 --decode > "$TMP_ENV_FILE"; then
                 if [ ! -s "$TMP_ENV_FILE" ]; then
                   echo "❌ BACKEND_ENV_BASE64 decoded to an empty file." >&2
                   rm -f "$TMP_ENV_FILE"
                   exit 1
                 fi
-                mv "$TMP_ENV_FILE" "$BACKEND_ENV_FILE"
+                mv -f "$TMP_ENV_FILE" "$BACKEND_ENV_FILE"
                 chmod 600 "$BACKEND_ENV_FILE"
                 echo "✓ Backend env loaded from BACKEND_ENV_BASE64 secret"
               else
@@ -174,7 +179,8 @@ jobs:
               if [ -f "$BACKEND_ENV_TEMPLATE" ]; then
                 cp "$BACKEND_ENV_TEMPLATE" "$BACKEND_ENV_FILE"
                 chmod 600 "$BACKEND_ENV_FILE"
-                echo "⚠ Missing .env.backend. Created from template; please update with real values."
+                echo "❌ Missing backend env file. Template copied; update it and re-run deploy." >&2
+                exit 1
               else
                 echo "❌ Missing backend env file and no template available. Aborting deploy." >&2
                 exit 1
