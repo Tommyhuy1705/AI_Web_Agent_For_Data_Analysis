@@ -150,7 +150,7 @@ export function useAgentStream(): UseAgentStreamReturn {
             case "start":
               setStatusMessage("Bắt đầu xử lý...");
               // Cập nhật session_id từ backend nếu backend tạo session mới
-              if ((data as any).session_id && !(data as any).session_id === sessionId) {
+              if ((data as any).session_id && (data as any).session_id !== sessionId) {
                 setSessionId((data as any).session_id);
               }
               break;

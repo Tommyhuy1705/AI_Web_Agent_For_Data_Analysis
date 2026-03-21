@@ -18,13 +18,12 @@ SendGrid Integration:
 import json
 import logging
 import os
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional
 
 import httpx
 
 from backend.services.db_executor import (
-    execute_safe_query,
     fetch_one,
     upsert_via_rest,
 )
@@ -240,7 +239,7 @@ async def _generate_alarm_insight(alarm_data: Dict[str, Any]) -> Optional[str]:
                                f"Trước đó: {alarm_data['previous_revenue']:,.0f} VNĐ. "
                                f"Mức độ: {alarm_data['severity']}. "
                                + (f"\n\nDữ liệu đối thủ cạnh tranh: {alarm_data.get('competitor_context', 'Không có dữ liệu')}" if alarm_data.get('competitor_context') else "")
-                               + f"\nPhân tích nguyên nhân có thể và đề xuất hành động."
+                               + "\nPhân tích nguyên nhân có thể và đề xuất hành động."
                 },
             ],
             temperature=0.3,

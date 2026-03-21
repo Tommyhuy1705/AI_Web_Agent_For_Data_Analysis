@@ -8,7 +8,6 @@ Strategy:
 2. Fallback: asyncpg direct connection (if SUPABASE_DATABASE_URL is provided)
 """
 
-import json
 import os
 import re
 import logging
@@ -487,7 +486,7 @@ async def health_check() -> Dict[str, Any]:
                         "mode": "rest_api",
                         "supabase_url": SUPABASE_URL,
                     }
-        except Exception as e:
+        except Exception:
             pass
 
     # Try asyncpg
@@ -502,7 +501,7 @@ async def health_check() -> Dict[str, Any]:
                     "current_time": str(result["current_time"]),
                     "pg_version": result["pg_version"][:50],
                 }
-    except Exception as e:
+    except Exception:
         pass
 
     return {

@@ -23,7 +23,6 @@ from backend.services.chat_history_service import (
     get_context_messages,
     delete_session,
     save_message,
-    auto_generate_title,
 )
 
 logger = logging.getLogger(__name__)
