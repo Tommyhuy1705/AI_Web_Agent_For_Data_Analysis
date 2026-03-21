@@ -188,6 +188,7 @@ jobs:
 
             # Stop and remove old containers to avoid name conflicts
             docker compose -f docker-compose.prod.yml down --remove-orphans 2>/dev/null || true
+            docker rm -f sia-backend sia-frontend 2>/dev/null || true
             echo "✓ Old containers stopped"
 
             # Pull latest images
