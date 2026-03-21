@@ -87,9 +87,10 @@ async def create_audio_briefing(request: BriefingRequest):
         )
 
         if not audio_bytes:
+            logger.error(f"Failed to generate audio bytes for text: {request.text[:100]}")
             raise HTTPException(
                 status_code=500,
-                detail="Không thể tạo audio. Vui lòng kiểm tra ELEVENLABS_API_KEY và thử lại.",
+                detail="Không thể tạo audio. ElevenLabs API có thể bị lỗi hoặc API key không hợp lệ. Kiểm tra logs backend để biết chi tiết.",
             )
 
         return Response(

@@ -87,11 +87,11 @@ async def text_to_speech_bytes(
         )
         return audio_bytes
 
-    except ImportError:
-        logger.error("elevenlabs not installed. Run: pip install elevenlabs")
+    except ImportError as e:
+        logger.error(f"elevenlabs not installed. Run: pip install elevenlabs. Error: {e}")
         return None
     except Exception as e:
-        logger.error(f"ElevenLabs TTS error: {e}")
+        logger.error(f"ElevenLabs TTS error (type={type(e).__name__}): {str(e)}", exc_info=True)
         return None
 
 
