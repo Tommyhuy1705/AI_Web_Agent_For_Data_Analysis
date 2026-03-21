@@ -1,0 +1,21 @@
+# Data Pipeline Dependencies (separate from backend)
+# Install with: pip install -r data_pipeline/requirements.txt
+
+# Database
+psycopg2-binary>=2.9.9
+asyncpg>=0.29.0
+
+# dbt
+dbt-core>=1.8.0
+dbt-postgres>=1.8.0
+
+# Data processing
+pandas>=2.2.0
+numpy>=1.26.0
+
+# HTTP / Crawling
+httpx>=0.27.0
+tinyfish>=0.1.0
+
+# Environment
+python-dotenv>=1.0.1
