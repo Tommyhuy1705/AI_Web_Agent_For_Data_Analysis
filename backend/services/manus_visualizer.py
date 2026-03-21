@@ -20,7 +20,7 @@ Rules:
 2. Return a JSON object with the following structure:
 {
     "chart_type": "bar|line|pie|area|scatter|composed",
-    "title": "Chart title in Vietnamese",
+    "title": "Chart title in English",
     "description": "Brief description of what the chart shows",
     "config": {
         "xAxis": {"dataKey": "field_name", "label": "Label"},
@@ -32,7 +32,7 @@ Rules:
     "data": [...processed data array...]
 }
 3. For pie charts, use: {"nameKey": "field", "dataKey": "value", "data": [...]}
-4. Always use Vietnamese for labels and titles
+4. Always use English for labels and titles
 5. Choose visually appealing colors
 6. Return ONLY valid JSON, no markdown or explanation
 """
@@ -48,8 +48,8 @@ async def generate_chart_config(
     if not data:
         return {
             "chart_type": "empty",
-            "title": "Không có dữ liệu",
-            "description": "Truy vấn không trả về kết quả nào.",
+            "title": "No data available",
+            "description": "The query returned no rows.",
             "config": {},
             "data": [],
         }
@@ -107,7 +107,7 @@ def _fallback_chart_config(
     Fallback: Tự sinh cấu hình biểu đồ cơ bản khi LLM không khả dụng.
     """
     if not data:
-        return {"chart_type": "empty", "title": "Không có dữ liệu", "config": {}, "data": []}
+        return {"chart_type": "empty", "title": "No data available", "config": {}, "data": []}
 
     keys = list(data[0].keys())
 
@@ -123,8 +123,8 @@ def _fallback_chart_config(
     if not numeric_keys:
         return {
             "chart_type": "table",
-            "title": "Kết quả truy vấn",
-            "description": "Dữ liệu dạng bảng",
+            "title": "Query results",
+            "description": "Tabular dataset",
             "config": {"columns": keys},
             "data": data[:100],
         }
@@ -143,8 +143,8 @@ def _fallback_chart_config(
 
     return {
         "chart_type": "bar",
-        "title": "Biểu đồ phân tích dữ liệu",
-        "description": f"Phân tích theo {x_key}",
+        "title": "Data analysis chart",
+        "description": f"Breakdown by {x_key}",
         "config": {
             "xAxis": {"dataKey": x_key, "label": x_key.replace("_", " ").title()},
             "yAxis": {"label": numeric_keys[0].replace("_", " ").title()},
@@ -162,7 +162,7 @@ async def generate_insight_summary(
     Sinh tóm tắt insight từ dữ liệu.
     """
     if not is_configured():
-        return "Không thể sinh tóm tắt insight (LLM chưa cấu hình). Vui lòng xem dữ liệu biểu đồ để phân tích."
+        return "Unable to generate AI insight because no LLM is configured. Please review the chart data directly."
 
     try:
         serialized = json.dumps(data[:30], default=str, ensure_ascii=False)
@@ -171,7 +171,7 @@ async def generate_insight_summary(
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a business data analyst. Summarize the key insights from the data in Vietnamese. Be concise and actionable. Max 3-4 sentences."
+                    "content": "You are a business data analyst. Summarize key insights in English. Be concise, actionable, and factual in 3-4 sentences."
                 },
                 {
                     "role": "user",
@@ -185,4 +185,4 @@ async def generate_insight_summary(
         return content
     except Exception as e:
         logger.error(f"Error generating insight: {e}")
-        return "Không thể sinh tóm tắt insight. Vui lòng xem dữ liệu biểu đồ để phân tích."
+        return "Unable to generate AI insight at the moment. Please review the chart data directly."

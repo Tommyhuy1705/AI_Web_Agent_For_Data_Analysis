@@ -17,6 +17,7 @@ from backend.services.audio_service import (
     text_to_speech_stream,
     get_available_voices,
 )
+from backend.services.llm_client import chat_completion, is_configured as is_llm_configured
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,54 @@ class BriefingRequest(BaseModel):
     voice_id: Optional[str] = Field(None, description="ElevenLabs Voice ID (tùy chọn)")
     model_id: Optional[str] = Field(None, description="ElevenLabs Model ID (tùy chọn)")
     stream: bool = Field(False, description="Trả về stream thay vì toàn bộ file")
+    summarize: bool = Field(True, description="Tự động tóm tắt trước khi đọc")
+    summary_words: int = Field(200, ge=120, le=300, description="Số từ mục tiêu cho bản tóm tắt")
+
+
+def _trim_to_words(text: str, max_words: int) -> str:
+    words = text.split()
+    if len(words) <= max_words:
+        return text
+    return " ".join(words[:max_words])
+
+
+async def _build_english_audio_script(text: str, target_words: int) -> str:
+    """Create a concise English script for TTS, targeting around target_words."""
+    cleaned = " ".join(text.split())
+    if not cleaned:
+        return ""
+
+    if not is_llm_configured():
+        # Fallback when LLM is unavailable: truncate to a manageable English-sized length.
+        return _trim_to_words(cleaned, target_words)
+
+    try:
+        summarized = await chat_completion(
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an executive briefing writer. Convert the input into natural, spoken English "
+                        "for text-to-speech. Keep it concise, factual, and easy to listen to. "
+                        "Target 180-220 words unless the input is too short. "
+                        "Return plain text only."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Rewrite and summarize this content into spoken English around {target_words} words:\n\n"
+                        f"{cleaned}"
+                    ),
+                },
+            ],
+            temperature=0.2,
+            max_tokens=420,
+        )
+        return _trim_to_words(" ".join(summarized.split()), 240)
+    except Exception as e:
+        logger.warning(f"Failed to summarize audio script with LLM: {e}")
+        return _trim_to_words(cleaned, target_words)
 
 
 @router.get("/status")
@@ -58,13 +107,23 @@ async def create_audio_briefing(request: BriefingRequest):
             detail="ElevenLabs chưa được cấu hình. Vui lòng thêm ELEVENLABS_API_KEY vào .env.",
         )
 
-    logger.info(f"Audio briefing request: {len(request.text)} chars, stream={request.stream}")
+    logger.info(
+        f"Audio briefing request: {len(request.text)} chars, stream={request.stream}, "
+        f"summarize={request.summarize}, summary_words={request.summary_words}"
+    )
+
+    script_text = request.text
+    if request.summarize:
+        script_text = await _build_english_audio_script(request.text, request.summary_words)
+
+    if not script_text.strip():
+        raise HTTPException(status_code=400, detail="Audio text is empty after preprocessing")
 
     if request.stream:
         # Streaming response (chunk by chunk)
         async def audio_stream_generator():
             async for chunk in text_to_speech_stream(
-                text=request.text,
+                text=script_text,
                 voice_id=request.voice_id,
                 model_id=request.model_id,
             ):
@@ -81,7 +140,7 @@ async def create_audio_briefing(request: BriefingRequest):
     else:
         # Full response (toàn bộ file MP3)
         audio_bytes = await text_to_speech_bytes(
-            text=request.text,
+            text=script_text,
             voice_id=request.voice_id,
             model_id=request.model_id,
         )

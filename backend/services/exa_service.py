@@ -160,8 +160,8 @@ async def get_market_context(
             "context_type": context_type,
             "articles": [],
             "synthesized_context": (
-                f"Không tìm được tin tức liên quan đến '{topic}'. "
-                "Vui lòng kiểm tra lại EXA_API_KEY hoặc thử lại với từ khóa khác."
+                f"No relevant market sources found for '{topic}'. "
+                "Please verify EXA_API_KEY or try a more specific query."
             ),
             "source_count": 0,
         }
@@ -174,7 +174,7 @@ async def get_market_context(
             )
 
     synthesized = (
-        f"Tìm thấy {len(articles)} nguồn tin liên quan đến '{topic}':\n"
+        f"Found {len(articles)} relevant sources for '{topic}':\n"
         + "\n".join(context_parts)
     )
 
@@ -217,7 +217,7 @@ async def analyze_revenue_drop_context(
         summaries = [a["summary"] for a in articles if a.get("summary")]
         context_summary = " | ".join(summaries[:3])
     else:
-        context_summary = "Không tìm được bối cảnh tin tức liên quan."
+        context_summary = "No relevant contextual news found."
 
     return {
         "query_used": query,
@@ -254,15 +254,15 @@ async def search_outside_db(
         return {
             "articles": [],
             "formatted_answer": (
-                "Tôi không tìm được thông tin liên quan đến câu hỏi của bạn qua Exa. "
-                "Câu hỏi này có thể nằm ngoài phạm vi dữ liệu nội bộ và dữ liệu thị trường hiện có."
+                "I could not find relevant market sources via Exa for your question. "
+                "This may be outside both the internal database scope and currently indexed market data."
             ),
             "source_count": 0,
         }
 
     # Format câu trả lời
     answer_parts = [
-        f"📰 **Kết quả tìm kiếm thị trường cho: \"{user_question[:100]}\"**\n"
+        f"Market search results for: \"{user_question[:100]}\"\n"
     ]
     for i, article in enumerate(articles, 1):
         title = article.get("title", "N/A")
@@ -271,10 +271,10 @@ async def search_outside_db(
         pub_date = article.get("published_date", "")
 
         answer_parts.append(
-            f"**[{i}] {title}**\n"
+            f"[{i}] {title}\n"
             f"{summary[:400]}\n"
-            f"🔗 {url}"
-            + (f"\n📅 {pub_date[:10]}" if pub_date else "")
+            f"Source: {url}"
+            + (f"\nPublished: {pub_date[:10]}" if pub_date else "")
             + "\n"
         )
 

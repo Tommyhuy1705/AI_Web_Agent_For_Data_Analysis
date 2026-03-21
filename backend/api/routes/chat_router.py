@@ -235,7 +235,43 @@ async def _stream_sse_event(event: str, data: Any) -> str:
 
 
 def _friendly_ai_overload_message() -> str:
-    return "Hệ thống AI đang quá tải, vui lòng thử lại sau vài giây."
+    return "The AI service is currently overloaded. Please try again in a few seconds."
+
+
+async def _build_tinyfish_dashboard_chart() -> Optional[Dict[str, Any]]:
+    """Create a lightweight dashboard chart from latest TinyFish competitor data."""
+    try:
+        rows = await execute_safe_query(
+            "SELECT keyword, AVG(price) AS avg_price, AVG(discount_pct) AS avg_discount, "
+            "AVG(sold_count) AS avg_sold, COUNT(*) AS sample_size "
+            "FROM competitor_prices "
+            "WHERE crawled_at >= NOW() - INTERVAL '14 days' "
+            "GROUP BY keyword "
+            "ORDER BY avg_price DESC "
+            "LIMIT 10"
+        )
+        if not rows:
+            return None
+
+        return {
+            "chart_type": "bar",
+            "title": "Competitor Pricing Snapshot (TinyFish)",
+            "description": "Average competitor price by tracked keyword in the last 14 days",
+            "config": {
+                "xAxis": {"dataKey": "keyword", "label": "Keyword"},
+                "yAxis": {"label": "Average Price (VND)"},
+                "series": [
+                    {"dataKey": "avg_price", "name": "Avg Price", "color": "#3B82F6"},
+                    {"dataKey": "avg_discount", "name": "Avg Discount %", "color": "#10B981"},
+                    {"dataKey": "avg_sold", "name": "Avg Sold Count", "color": "#F59E0B"},
+                ],
+            },
+            "data": rows,
+            "dashboard_panel": "tinyfish_competitor_stats",
+        }
+    except Exception as e:
+        logger.warning(f"Failed to build TinyFish dashboard chart: {e}")
+        return None
 
 
 # ============================================================
@@ -334,42 +370,46 @@ async def _process_market_quant(
     )
 
     yield await _stream_sse_event("status", {
-        "message": "🔍 Đang cào dữ liệu đối thủ từ Shopee/Tiki (TinyFish)...",
+        "message": "Running quantitative crawl from TinyFish (Shopee/Tiki) ...",
         "tool": "market_quant_scraper",
     })
 
     if not tf_configured():
         yield await _stream_sse_event("insight", {
-            "text": "⚠️ TinyFish chưa được cấu hình. Vui lòng thêm TINYFISH_API_KEY vào .env."
+            "text": "TinyFish is not configured. Please set TINYFISH_API_KEY in environment settings."
         })
         yield await _stream_sse_event("complete", {"message": "TinyFish not configured", "tool_used": "market_quant_scraper"})
         return
 
     try:
-        yield await _stream_sse_event("status", {"message": "⏳ Đang cào dữ liệu... (có thể mất 30-60 giây)"})
+        yield await _stream_sse_event("status", {"message": "Crawling competitor data (this can take 30-60 seconds) ..."})
         await run_competitor_crawl()
         summary = await get_market_intel_summary()
+        chart_payload = await _build_tinyfish_dashboard_chart()
 
         if summary:
             yield await _stream_sse_event("data_ready", {
                 "row_count": summary.get("total_records", 0),
                 "preview": summary.get("recent_crawls", [])[:5],
             })
+            if chart_payload:
+                yield await _stream_sse_event("chart", chart_payload)
             insight_text = (
-                f"📊 **Kết quả Tình báo Thị trường (TinyFish)**\n\n"
-                f"- Tổng bản ghi: {summary.get('total_records', 0)}\n"
-                f"- Nguồn: {', '.join(summary.get('sources', []))}\n"
-                f"- Cập nhật lúc: {summary.get('last_crawled_at', 'N/A')}\n\n"
-                f"Dữ liệu đã được lưu vào bảng `raw_market_intel`. "
-                f"Hãy hỏi tôi về giá cụ thể của từng sản phẩm!"
+                f"Quantitative crawl completed.\n\n"
+                f"- Total records: {summary.get('total_records', 0)}\n"
+                f"- Sources: {', '.join(summary.get('sources', [])) or 'N/A'}\n"
+                f"- Last crawl: {summary.get('last_crawled_at', 'N/A')}\n\n"
+                f"Output type: dashboard-ready statistics from TinyFish competitor data. "
+                f"Ask for product-level comparisons if you want deeper drill-down."
             )
         else:
-            insight_text = "Dữ liệu đối thủ đã được cào. Kiểm tra bảng `raw_market_intel` trong Supabase."
+            insight_text = "Quantitative crawl completed. Data is stored in raw_market_intel for dashboard analytics."
 
         yield await _stream_sse_event("insight", {"text": insight_text})
         yield await _stream_sse_event("complete", {
-            "message": "Cào dữ liệu đối thủ hoàn thành!",
+            "message": "TinyFish quantitative crawl completed.",
             "tool_used": "market_quant_scraper",
+            "output_type": "dashboard_statistics",
         })
 
     except Exception as e:
@@ -388,13 +428,13 @@ async def _process_market_qual(
     )
 
     yield await _stream_sse_event("status", {
-        "message": "📰 Đang tìm kiếm tin tức thị trường (Exa Neural Search)...",
+        "message": "Searching qualitative market news with Exa Neural Search ...",
         "tool": "market_qual_search",
     })
 
     if not exa_configured():
         yield await _stream_sse_event("insight", {
-            "text": "⚠️ Exa chưa được cấu hình. Vui lòng thêm EXA_API_KEY vào .env."
+            "text": "Exa is not configured. Please set EXA_API_KEY in environment settings."
         })
         yield await _stream_sse_event("complete", {"message": "Exa not configured", "tool_used": "market_qual_search"})
         return
@@ -421,31 +461,31 @@ async def _process_market_qual(
                 "preview": [{"title": a["title"], "url": a["url"]} for a in articles[:3]],
             })
 
-        insight_parts = [f"📰 **Kết quả Tìm kiếm Tin tức (Exa Neural Search)**\n"]
+        insight_parts = ["News intelligence result (Exa):\n"]
         for i, article in enumerate(articles, 1):
             title = article.get("title", "N/A")
             summary = article.get("summary", "")
             url = article.get("url", "")
             pub_date = article.get("published_date", "")
             insight_parts.append(
-                f"**[{i}] {title}**\n"
+                f"[{i}] {title}\n"
                 f"{summary[:400]}\n"
-                f"🔗 {url}"
-                + (f"\n📅 {pub_date[:10]}" if pub_date else "")
+                f"Source: {url}"
+                + (f"\nPublished: {pub_date[:10]}" if pub_date else "")
                 + "\n"
             )
 
         if not articles:
             insight_parts.append(
-                "Không tìm được tin tức liên quan. "
-                "Vui lòng thử lại với từ khóa cụ thể hơn."
+                "No relevant news was found. Try a more specific market topic or competitor name."
             )
 
         yield await _stream_sse_event("insight", {"text": "\n".join(insight_parts)})
         yield await _stream_sse_event("complete", {
-            "message": f"Tìm thấy {len(articles)} bài báo liên quan!",
+            "message": f"Found {len(articles)} relevant market sources.",
             "tool_used": "market_qual_search",
             "article_count": len(articles),
+            "output_type": "news_sources",
         })
 
     except Exception as e:
@@ -470,7 +510,7 @@ async def _process_hybrid_revenue_drop(
     )
 
     yield await _stream_sse_event("status", {
-        "message": "🔄 Phát hiện câu hỏi về doanh thu rớt. Kích hoạt Hybrid Intelligence...",
+        "message": "Revenue-drop intent detected. Starting hybrid intelligence workflow ...",
         "tool": "hybrid_revenue_analysis",
     })
 
@@ -478,26 +518,26 @@ async def _process_hybrid_revenue_drop(
     qual_result = None
 
     if tf_configured():
-        yield await _stream_sse_event("status", {"message": "🔍 [1/2] Đang kiểm tra giá đối thủ (TinyFish)..."})
+        yield await _stream_sse_event("status", {"message": "[1/2] Fetching quantitative competitor signals from TinyFish ..."})
         try:
             quant_result = await get_competitor_context_for_alarm()
         except Exception as e:
             logger.warning(f"TinyFish hybrid call failed: {e}")
     else:
-        yield await _stream_sse_event("status", {"message": "⚠️ TinyFish chưa cấu hình, bỏ qua bước kiểm tra giá đối thủ."})
+        yield await _stream_sse_event("status", {"message": "TinyFish is not configured, skipping quantitative competitor signals."})
 
     if exa_configured():
-        yield await _stream_sse_event("status", {"message": "📰 [2/2] Đang tìm kiếm bối cảnh tin tức (Exa)..."})
+        yield await _stream_sse_event("status", {"message": "[2/2] Fetching qualitative market context from Exa ..."})
         try:
             qual_result = await analyze_revenue_drop_context()
         except Exception as e:
             logger.warning(f"Exa hybrid call failed: {e}")
     else:
-        yield await _stream_sse_event("status", {"message": "⚠️ Exa chưa cấu hình, bỏ qua bước tìm kiếm tin tức."})
+        yield await _stream_sse_event("status", {"message": "Exa is not configured, skipping qualitative news context."})
 
-    insight_parts = ["🔎 **Phân tích Hybrid: Tại sao Doanh thu Giảm?**\n", "---\n"]
+    insight_parts = ["Hybrid Revenue Drop Analysis", ""]
 
-    insight_parts.append("📊 **[TinyFish] Giá Đối thủ:**")
+    insight_parts.append("[TinyFish] Quantitative competitor metrics:")
     if quant_result:
         competitors = quant_result.get("competitors", [])
         if competitors:
@@ -505,15 +545,15 @@ async def _process_hybrid_revenue_drop(
                 insight_parts.append(
                     f"- {c.get('product_name', 'N/A')}: "
                     f"{c.get('price', 'N/A')} VND "
-                    f"(giảm {c.get('discount_percentage', 0)}%)"
+                    f"(discount {c.get('discount_percentage', 0)}%)"
                 )
         else:
-            insight_parts.append("- Không có dữ liệu đối thủ gần đây.")
+            insight_parts.append("- No recent competitor records found.")
     else:
-        insight_parts.append("- TinyFish không khả dụng hoặc chưa cấu hình.")
+        insight_parts.append("- TinyFish unavailable or not configured.")
 
     insight_parts.append("")
-    insight_parts.append("📰 **[Exa] Bối cảnh Tin tức:**")
+    insight_parts.append("[Exa] Qualitative news context:")
     if qual_result:
         articles = qual_result.get("articles", [])
         if articles:
@@ -523,19 +563,18 @@ async def _process_hybrid_revenue_drop(
                     f"  {a.get('summary', '')[:250]}"
                 )
         else:
-            insight_parts.append("- Không tìm được tin tức liên quan.")
+            insight_parts.append("- No relevant news sources found.")
     else:
-        insight_parts.append("- Exa không khả dụng hoặc chưa cấu hình.")
+        insight_parts.append("- Exa unavailable or not configured.")
 
     insight_parts.append("")
     insight_parts.append(
-        "💡 **Kết luận:** Hãy kiểm tra xem đối thủ có đang đẩy mạnh khuyến mãi không và "
-        "theo dõi các tin tức vĩ mô ảnh hưởng đến nhu cầu tiêu dùng."
+        "Conclusion: monitor competitor discount pressure and track macro news that can impact consumer demand."
     )
 
     yield await _stream_sse_event("insight", {"text": "\n".join(insight_parts)})
     yield await _stream_sse_event("complete", {
-        "message": "Phân tích Hybrid hoàn thành!",
+        "message": "Hybrid analysis completed.",
         "tool_used": "hybrid_revenue_analysis",
         "tinyfish_used": quant_result is not None,
         "exa_used": qual_result is not None,
@@ -556,14 +595,14 @@ async def _process_market_outside_db(
     )
 
     yield await _stream_sse_event("status", {
-        "message": "🌐 Câu hỏi ngoài phạm vi dữ liệu nội bộ. Đang tìm kiếm thông tin thị trường (Exa)...",
+        "message": "Question detected outside internal DB scope. Searching market intelligence via Exa ...",
         "tool": "market_outside_db_search",
     })
 
     if not exa_configured():
         # Fallback: dùng LLM để trả lời từ kiến thức chung
         yield await _stream_sse_event("status", {
-            "message": "Exa chưa cấu hình, đang dùng LLM để trả lời..."
+            "message": "Exa is not configured. Falling back to general LLM response ..."
         })
         async for event in _process_llm_general(message, user_id):
             yield event
@@ -583,7 +622,7 @@ async def _process_market_outside_db(
 
         # Nếu có kết quả, dùng LLM để tổng hợp insight từ các bài báo
         if articles and is_configured():
-            yield await _stream_sse_event("status", {"message": "🤖 Đang tổng hợp insight từ tin tức..."})
+            yield await _stream_sse_event("status", {"message": "Synthesizing cross-source market insight ..."})
             try:
                 articles_text = "\n".join([
                     f"- {a.get('title', '')}: {a.get('summary', '')[:300]}"
@@ -594,18 +633,17 @@ async def _process_market_outside_db(
                         {
                             "role": "system",
                             "content": (
-                                "Bạn là chuyên gia phân tích thị trường Việt Nam. "
-                                "Dựa trên các bài báo được cung cấp, hãy tổng hợp thành "
-                                "một phân tích ngắn gọn, súc tích bằng tiếng Việt (tối đa 300 từ). "
-                                "Tập trung vào insights có giá trị cho doanh nghiệp."
+                                "You are a market intelligence analyst. "
+                                "Synthesize the provided sources into concise English (max 300 words). "
+                                "Focus on practical business insight, risks, and opportunities."
                             ),
                         },
                         {
                             "role": "user",
                             "content": (
-                                f"Câu hỏi: {message}\n\n"
-                                f"Các bài báo liên quan:\n{articles_text}\n\n"
-                                f"Hãy tổng hợp insight:"
+                                f"Question: {message}\n\n"
+                                f"Relevant sources:\n{articles_text}\n\n"
+                                f"Write a concise synthesis:"
                             ),
                         },
                     ],
@@ -614,7 +652,7 @@ async def _process_market_outside_db(
                 )
                 formatted_answer = (
                     formatted_answer
-                    + "\n\n---\n💡 **Tổng hợp Insight:**\n"
+                    + "\n\n---\nSynthesis:\n"
                     + synthesis
                 )
             except Exception as e:
@@ -622,7 +660,7 @@ async def _process_market_outside_db(
 
         yield await _stream_sse_event("insight", {"text": formatted_answer})
         yield await _stream_sse_event("complete", {
-            "message": f"Tìm thấy {len(articles)} nguồn tin thị trường!",
+            "message": f"Found {len(articles)} market sources.",
             "tool_used": "market_outside_db_search",
             "article_count": len(articles),
         })
@@ -639,7 +677,7 @@ async def _process_llm_general(
     """Trả lời câu hỏi chung bằng LLM (không có DB, không có Exa)."""
     if not is_configured():
         yield await _stream_sse_event("error", {
-            "message": "Chưa cấu hình LLM. Vui lòng set DASHSCOPE_API_KEY hoặc OPENAI_API_KEY."
+            "message": "No LLM provider configured. Please set DASHSCOPE_API_KEY or OPENAI_API_KEY."
         })
         return
 
@@ -649,8 +687,8 @@ async def _process_llm_general(
                 {
                     "role": "system",
                     "content": (
-                        "Bạn là trợ lý phân tích kinh doanh thông minh. "
-                        "Trả lời bằng tiếng Việt, ngắn gọn và có giá trị thực tế."
+                        "You are an intelligent business analytics assistant. "
+                        "Always answer in clear English with concise, practical recommendations."
                     ),
                 },
                 {"role": "user", "content": message},
@@ -660,7 +698,7 @@ async def _process_llm_general(
         )
         yield await _stream_sse_event("insight", {"text": response})
         yield await _stream_sse_event("complete", {
-            "message": "Hoàn thành!",
+            "message": "Completed.",
             "tool_used": "llm_general",
         })
     except Exception as e:

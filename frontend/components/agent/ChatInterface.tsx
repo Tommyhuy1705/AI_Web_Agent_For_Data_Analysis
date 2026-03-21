@@ -92,7 +92,11 @@ function AudioBriefingButton({ text }: { text: string }) {
       const response = await fetch(`${API_BASE}/api/audio/briefing`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: text.slice(0, 2000) }),
+        body: JSON.stringify({
+          text: text.slice(0, 4000),
+          summarize: true,
+          summary_words: 200,
+        }),
       });
 
       if (!response.ok) {

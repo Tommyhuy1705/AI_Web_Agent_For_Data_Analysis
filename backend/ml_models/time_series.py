@@ -204,28 +204,28 @@ async def generate_strategic_insight(
     Uses centralized LLM client (Qwen or OpenAI).
     """
     if not is_configured():
-        return "Không thể sinh báo cáo insight (LLM chưa cấu hình)."
+        return "Unable to generate strategic insight because no LLM is configured."
 
     try:
-        prompt = f"""Bạn là một chuyên gia phân tích kinh doanh. Dựa trên dữ liệu dự đoán doanh thu sau,
-hãy viết một báo cáo insight chiến lược ngắn gọn (3-5 đoạn) bằng tiếng Việt.
+        prompt = f"""You are a senior business analyst. Based on the revenue forecast below,
+write a concise strategic insight report in English (3-5 short paragraphs).
 
-Dữ liệu dự đoán:
+Forecast data:
 {json.dumps(predictions, ensure_ascii=False, indent=2)}
 
-Ngữ cảnh bổ sung:
-{context or "Không có ngữ cảnh bổ sung."}
+Additional context:
+{context or "No additional context provided."}
 
-Yêu cầu:
-1. Phân tích xu hướng doanh thu
-2. Đưa ra nhận định về các kỳ tới
-3. Đề xuất 2-3 hành động chiến lược cụ thể
-4. Không ảo giác - chỉ dựa trên dữ liệu thực
-5. Sử dụng ngôn ngữ chuyên nghiệp, sắc bén"""
+Requirements:
+1. Analyze revenue trend direction and momentum.
+2. Provide an outlook for the next periods.
+3. Recommend 2-3 concrete strategic actions.
+4. Avoid hallucinations and stay grounded in provided data.
+5. Use professional and direct business language."""
 
         content = await chat_completion(
             messages=[
-                {"role": "system", "content": "Bạn là chuyên gia phân tích kinh doanh cấp cao."},
+                {"role": "system", "content": "You are a senior strategic business analyst."},
                 {"role": "user", "content": prompt},
             ],
             temperature=0.5,
@@ -236,7 +236,7 @@ Yêu cầu:
 
     except Exception as e:
         logger.error(f"Insight generation error: {e}")
-        return "Không thể sinh báo cáo insight. Vui lòng kiểm tra cấu hình LLM."
+        return "Unable to generate strategic insight. Please verify LLM configuration."
 
 
 async def search_context_from_zilliz(query: str) -> str:
