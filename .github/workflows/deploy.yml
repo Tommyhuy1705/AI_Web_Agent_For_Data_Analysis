@@ -186,13 +186,17 @@ jobs:
             # Export env for docker compose
             export IMAGE_TAG=latest
 
+            # Stop and remove old containers to avoid name conflicts
+            docker compose -f docker-compose.prod.yml down --remove-orphans 2>/dev/null || true
+            echo "✓ Old containers stopped"
+
             # Pull latest images
             docker compose -f docker-compose.prod.yml pull
             echo "✓ Images pulled from ECR"
 
-            # Rolling restart: backend first, then frontend
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
-            echo "✓ Containers restarted"
+            # Start fresh containers
+            docker compose -f docker-compose.prod.yml up -d --force-recreate
+            echo "✓ Containers started"
 
             # Wait for backend health check
             sleep 30
