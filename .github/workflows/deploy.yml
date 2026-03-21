@@ -154,7 +154,7 @@ jobs:
             # Ensure backend env file exists
             BACKEND_ENV_FILE="/opt/sia/.env.backend"
             BACKEND_ENV_TEMPLATE="/opt/sia/backend/.env.example"
-            MIN_BACKEND_ENV_B64_LENGTH=16 # Avoid trivially short payloads that can't represent a real env file.
+            MIN_BACKEND_ENV_B64_LENGTH=16 # 16 base64 chars ≈ 12 decoded bytes; smaller payloads won't be a real env file.
             if [ -n "${BACKEND_ENV_BASE64:-}" ]; then
               BACKEND_ENV_CLEAN="$(printf '%s' "$BACKEND_ENV_BASE64" | tr -d '\n\r\t ')"
               if [ -z "$BACKEND_ENV_CLEAN" ]; then
@@ -165,10 +165,12 @@ jobs:
                 echo "❌ BACKEND_ENV_BASE64 is too short to be a valid env file." >&2
                 exit 1
               fi
+              # Accept standard (+/) and URL-safe (-_) base64 alphabets.
               if ! printf '%s' "$BACKEND_ENV_CLEAN" | grep -Eq '^[A-Za-z0-9+/_-]+={0,2}$'; then
                 echo "❌ BACKEND_ENV_BASE64 contains invalid characters." >&2
                 exit 1
               fi
+              BACKEND_ENV_DECODE_INPUT="$(printf '%s' "$BACKEND_ENV_CLEAN" | tr '_-' '/+')"
               ENV_TMP_DIR="$(mktemp -d -t backend-env.XXXXXX)" || { echo "❌ Unable to create temp directory for env payload." >&2; exit 1; }
               chmod 700 "$ENV_TMP_DIR"
               TMP_ENV_FILE="$ENV_TMP_DIR/env"
@@ -178,7 +180,7 @@ jobs:
                 rmdir "$ENV_TMP_DIR" 2>/dev/null || true
               }
               trap cleanup_env_tmp EXIT
-              if printf '%s' "$BACKEND_ENV_CLEAN" | base64 --decode > "$TMP_ENV_FILE" 2> "$TMP_ENV_ERR"; then
+              if printf '%s' "$BACKEND_ENV_DECODE_INPUT" | base64 --decode > "$TMP_ENV_FILE" 2> "$TMP_ENV_ERR"; then
                 if [ ! -s "$TMP_ENV_FILE" ]; then
                   echo "❌ BACKEND_ENV_BASE64 decoded to an empty file." >&2
                   exit 1
