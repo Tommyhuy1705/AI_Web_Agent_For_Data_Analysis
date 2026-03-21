@@ -81,12 +81,71 @@ Examples:
 
 If the question is not about data, return: SELECT 'I can only answer data-related questions'"""
 
+# ============================================================
+# Tool Descriptions for Intent Routing
+# ============================================================
+#
+# Tool market_quant_scraper (Gọi TinyFish):
+#   Chỉ kích hoạt khi người dùng hỏi về con số cụ thể của đối thủ:
+#   Giá bán, số lượng, phần trăm giảm giá trên Shopee/Lazada.
+#
+# Tool market_qual_search (Gọi Exa):
+#   Chỉ kích hoạt khi người dùng hỏi TẠI SAO (Why) có biến động,
+#   cần tìm tin tức, bối cảnh thời tiết, xu hướng thị trường, lý do vĩ mô.
+#
+# Logic gộp (Hybrid):
+#   Nếu phát hiện doanh thu rớt, LLM tự động gọi cả TinyFish (xem đối thủ
+#   có phá giá không) và Exa (xem có trend gì xấu không) để đúc kết thành
+#   1 insight hoàn chỉnh.
+# ============================================================
+
 # Predict keywords (both with and without Vietnamese diacritics)
 PREDICT_KEYWORDS = [
     "dự đoán", "du doan", "forecast", "predict", "xu hướng tương lai",
     "dự báo", "du bao", "prediction", "tương lai", "tuong lai",
     "next month", "tháng tới", "thang toi", "quý tới", "quy toi",
     "năm tới", "nam toi", "sắp tới", "sap toi",
+]
+
+# Market Quantitative keywords (TinyFish - giá đối thủ, số lượng)
+MARKET_QUANT_KEYWORDS = [
+    # Giá đối thủ
+    "giá đối thủ", "gia doi thu", "competitor price", "đối thủ bán giá",
+    "giá shopee", "gia shopee", "giá lazada", "gia lazada", "giá tiki", "gia tiki",
+    "so sánh giá", "so sanh gia", "price comparison",
+    # Số lượng bán
+    "số lượng bán", "so luong ban", "items sold", "đã bán", "da ban",
+    # Giảm giá
+    "giảm giá đối thủ", "giam gia doi thu", "discount competitor",
+    "phần trăm giảm", "phan tram giam", "% giảm",
+    # Crawl / scrape
+    "cào dữ liệu", "cao du lieu", "crawl", "scrape", "market intel",
+    "tình báo thị trường", "tinh bao thi truong",
+]
+
+# Market Qualitative keywords (Exa - tin tức, bối cảnh, lý do)
+MARKET_QUAL_KEYWORDS = [
+    # Tại sao / Why
+    "tại sao", "tai sao", "why", "lý do", "ly do", "nguyên nhân", "nguyen nhan",
+    "vì sao", "vi sao", "reason", "cause",
+    # Tin tức
+    "tin tức", "tin tuc", "news", "bài báo", "bai bao", "article",
+    # Xu hướng
+    "xu hướng", "xu huong", "trend", "market trend", "xu thế", "xu the",
+    # Bối cảnh
+    "bối cảnh", "boi canh", "context", "background",
+    # Thời tiết / vĩ mô
+    "thời tiết", "thoi tiet", "weather", "vĩ mô", "vi mo", "macro",
+    # Sự kiện
+    "sự kiện", "su kien", "event", "tin mới nhất", "tin moi nhat",
+]
+
+# Hybrid trigger keywords (doanh thu rớt → gọi cả TinyFish + Exa)
+HYBRID_REVENUE_DROP_KEYWORDS = [
+    "doanh thu giảm", "doanh thu rot", "doanh thu rớt", "revenue drop",
+    "revenue decline", "doanh thu xuống", "doanh thu xuong",
+    "doanh số giảm", "doanh so giam", "sales drop", "sales decline",
+    "tại sao doanh thu", "tai sao doanh thu", "why revenue",
 ]
 
 # Dashboard keywords
@@ -166,6 +225,35 @@ def _is_dashboard_request(message: str) -> bool:
     return any(kw in msg_lower for kw in DASHBOARD_KEYWORDS)
 
 
+def _is_market_quant_request(message: str) -> bool:
+    """
+    Tool: market_quant_scraper (TinyFish)
+    Chỉ kích hoạt khi người dùng hỏi về con số cụ thể của đối thủ:
+    Giá bán, số lượng, phần trăm giảm giá trên Shopee/Lazada.
+    """
+    msg_lower = message.lower()
+    return any(kw in msg_lower for kw in MARKET_QUANT_KEYWORDS)
+
+
+def _is_market_qual_request(message: str) -> bool:
+    """
+    Tool: market_qual_search (Exa)
+    Chỉ kích hoạt khi người dùng hỏi TẠI SAO (Why) có biến động,
+    cần tìm tin tức, bối cảnh thời tiết, xu hướng thị trường, lý do vĩ mô.
+    """
+    msg_lower = message.lower()
+    return any(kw in msg_lower for kw in MARKET_QUAL_KEYWORDS)
+
+
+def _is_hybrid_revenue_drop(message: str) -> bool:
+    """
+    Logic gộp (Hybrid): Phát hiện câu hỏi về doanh thu rớt.
+    Tự động gọi cả TinyFish + Exa để đúc kết insight hoàn chỉnh.
+    """
+    msg_lower = message.lower()
+    return any(kw in msg_lower for kw in HYBRID_REVENUE_DROP_KEYWORDS)
+
+
 def _build_fallback_chart(dq: dict, data: list) -> dict:
     """Build a fallback chart config when LLM-based chart generation fails."""
     if not data:
@@ -215,6 +303,244 @@ def _build_fallback_chart(dq: dict, data: list) -> dict:
         config["config"]["dataKey"] = numeric_keys[0]
 
     return config
+
+
+async def _process_market_quant(
+    message: str,
+    user_id: str,
+) -> AsyncGenerator[str, None]:
+    """
+    Tool: market_quant_scraper (TinyFish)
+    Xử lý yêu cầu định lượng: cào giá đối thủ từ Shopee/Tiki.
+    """
+    from backend.services.tinyfish_service import (
+        is_configured as tf_configured,
+        run_competitor_crawl,
+        get_market_intel_summary,
+    )
+
+    yield await _stream_sse_event("status", {
+        "message": "🔍 Đang cào dữ liệu đối thủ từ Shopee/Tiki (TinyFish)...",
+        "tool": "market_quant_scraper",
+    })
+
+    if not tf_configured():
+        yield await _stream_sse_event("insight", {
+            "text": "TinyFish chưa được cấu hình. Vui lòng thêm TINYFISH_API_KEY vào .env."
+        })
+        yield await _stream_sse_event("complete", {"message": "TinyFish not configured", "tool_used": "market_quant_scraper"})
+        return
+
+    try:
+        # Chạy crawl đối thủ
+        yield await _stream_sse_event("status", {"message": "⏳ Đang cào dữ liệu... (có thể mất 30-60 giây)"})
+        await run_competitor_crawl()
+
+        # Lấy tóm tắt dữ liệu vừa cào
+        summary = await get_market_intel_summary()
+
+        if summary:
+            yield await _stream_sse_event("data_ready", {
+                "row_count": summary.get("total_records", 0),
+                "preview": summary.get("recent_crawls", [])[:5],
+            })
+            insight_text = (
+                f"📊 **Kết quả Tình báo Thị trường (TinyFish)**\n"
+                f"- Tổng bản ghi: {summary.get('total_records', 0)}\n"
+                f"- Nguồn: {', '.join(summary.get('sources', []))}\n"
+                f"- Cập nhật lúc: {summary.get('last_crawled_at', 'N/A')}\n\n"
+                f"Dữ liệu đã được lưu vào bảng raw_market_intel. "
+                f"Hãy hỏi tôi về giá cụ thể của từng sản phẩm!"
+            )
+        else:
+            insight_text = "Dữ liệu đối thủ đã được cào. Kiểm tra bảng raw_market_intel trong Supabase."
+
+        yield await _stream_sse_event("insight", {"text": insight_text})
+        yield await _stream_sse_event("complete", {
+            "message": "Cào dữ liệu đối thủ hoàn thành!",
+            "tool_used": "market_quant_scraper",
+        })
+
+    except Exception as e:
+        logger.error(f"Market quant scraper error: {e}", exc_info=True)
+        yield await _stream_sse_event("error", {"message": f"Lỗi cào dữ liệu: {str(e)}"})
+
+
+async def _process_market_qual(
+    message: str,
+    user_id: str,
+) -> AsyncGenerator[str, None]:
+    """
+    Tool: market_qual_search (Exa)
+    Xử lý yêu cầu định tính: tìm tin tức, bối cảnh, lý do biến động.
+    """
+    from backend.services.exa_service import (
+        is_configured as exa_configured,
+        search_market_news,
+        get_market_context,
+    )
+
+    yield await _stream_sse_event("status", {
+        "message": "📰 Đang tìm kiếm tin tức thị trường (Exa Neural Search)...",
+        "tool": "market_qual_search",
+    })
+
+    if not exa_configured():
+        yield await _stream_sse_event("insight", {
+            "text": "Exa chưa được cấu hình. Vui lòng thêm EXA_API_KEY vào .env."
+        })
+        yield await _stream_sse_event("complete", {"message": "Exa not configured", "tool_used": "market_qual_search"})
+        return
+
+    try:
+        # Xác định loại bối cảnh từ message
+        msg_lower = message.lower()
+        if any(w in msg_lower for w in ["thời tiết", "thoi tiet", "weather"]):
+            context_type = "weather"
+        elif any(w in msg_lower for w in ["đối thủ", "doi thu", "competitor"]):
+            context_type = "competitor"
+        elif any(w in msg_lower for w in ["xu hướng", "xu huong", "trend"]):
+            context_type = "trend"
+        elif any(w in msg_lower for w in ["vĩ mô", "vi mo", "macro", "kinh tế", "kinh te"]):
+            context_type = "macro"
+        else:
+            context_type = "general"
+
+        context = await get_market_context(topic=message[:200], context_type=context_type)
+
+        articles = context.get("articles", [])
+        if articles:
+            yield await _stream_sse_event("data_ready", {
+                "row_count": len(articles),
+                "preview": [{"title": a["title"], "url": a["url"]} for a in articles[:3]],
+            })
+
+        # Format insight
+        insight_parts = [f"📰 **Kết quả Tìm kiếm Tin tức (Exa)**\n"]
+        for i, article in enumerate(articles, 1):
+            insight_parts.append(
+                f"**[{i}] {article.get('title', 'N/A')}**\n"
+                f"{article.get('summary', '')}\n"
+                f"Nguồn: {article.get('url', '')}\n"
+            )
+
+        if not articles:
+            insight_parts.append("Không tìm được tin tức liên quan. Vui lòng kiểm tra EXA_API_KEY.")
+
+        yield await _stream_sse_event("insight", {"text": "\n".join(insight_parts)})
+        yield await _stream_sse_event("complete", {
+            "message": f"Tìm thấy {len(articles)} bài báo liên quan!",
+            "tool_used": "market_qual_search",
+            "article_count": len(articles),
+        })
+
+    except Exception as e:
+        logger.error(f"Market qual search error: {e}", exc_info=True)
+        yield await _stream_sse_event("error", {"message": f"Lỗi tìm kiếm tin tức: {str(e)}"})
+
+
+async def _process_hybrid_revenue_drop(
+    message: str,
+    user_id: str,
+) -> AsyncGenerator[str, None]:
+    """
+    Logic gộp (Hybrid): Khi phát hiện doanh thu rớt,
+    tự động gọi cả TinyFish (xem đối thủ có phá giá không)
+    và Exa (xem có trend gì xấu không) để đúc kết 1 insight hoàn chỉnh.
+    """
+    from backend.services.tinyfish_service import (
+        is_configured as tf_configured,
+        get_competitor_context_for_alarm,
+    )
+    from backend.services.exa_service import (
+        is_configured as exa_configured,
+        analyze_revenue_drop_context,
+    )
+
+    yield await _stream_sse_event("status", {
+        "message": "🔄 Phát hiện câu hỏi về doanh thu rớt. Kích hoạt Hybrid Intelligence...",
+        "tool": "hybrid_revenue_analysis",
+    })
+
+    quant_result = None
+    qual_result = None
+
+    # Bước 1: TinyFish — đối thủ có phá giá không?
+    if tf_configured():
+        yield await _stream_sse_event("status", {
+            "message": "🔍 [1/2] Đang kiểm tra giá đối thủ (TinyFish)..."
+        })
+        try:
+            quant_result = await get_competitor_context_for_alarm()
+        except Exception as e:
+            logger.warning(f"TinyFish hybrid call failed: {e}")
+    else:
+        yield await _stream_sse_event("status", {"message": "⚠️ TinyFish chưa cấu hình, bỏ qua bước kiểm tra giá đối thủ."})
+
+    # Bước 2: Exa — có trend xấu hay tin tức vĩ mô không?
+    if exa_configured():
+        yield await _stream_sse_event("status", {
+            "message": "📰 [2/2] Đang tìm kiếm bối cảnh tin tức (Exa)..."
+        })
+        try:
+            qual_result = await analyze_revenue_drop_context()
+        except Exception as e:
+            logger.warning(f"Exa hybrid call failed: {e}")
+    else:
+        yield await _stream_sse_event("status", {"message": "⚠️ Exa chưa cấu hình, bỏ qua bước tìm kiếm tin tức."})
+
+    # Đúc kết Hybrid Insight
+    insight_parts = [
+        "🔎 **Phân tích Hybrid: Tại sao Doanh thu Giảm?**\n",
+        "---\n",
+    ]
+
+    # Phần 1: Kết quả TinyFish
+    insight_parts.append("📊 **[TinyFish] Giá Đối thủ:**")
+    if quant_result:
+        competitors = quant_result.get("competitors", [])
+        if competitors:
+            for c in competitors[:3]:
+                insight_parts.append(
+                    f"- {c.get('product_name', 'N/A')}: "
+                    f"{c.get('price', 'N/A')} VND "
+                    f"(giảm {c.get('discount_percentage', 0)}%)"
+                )
+        else:
+            insight_parts.append("- Không có dữ liệu đối thủ gần đây.")
+    else:
+        insight_parts.append("- TinyFish không khả dụng hoặc chưa cấu hình.")
+
+    insight_parts.append("")
+
+    # Phần 2: Kết quả Exa
+    insight_parts.append("📰 **[Exa] Bối cảnh Tin tức:**")
+    if qual_result:
+        articles = qual_result.get("articles", [])
+        if articles:
+            for a in articles[:2]:
+                insight_parts.append(
+                    f"- **{a.get('title', 'N/A')}**\n"
+                    f"  {a.get('summary', '')[:200]}"
+                )
+        else:
+            insight_parts.append("- Không tìm được tin tức liên quan.")
+    else:
+        insight_parts.append("- Exa không khả dụng hoặc chưa cấu hình.")
+
+    insight_parts.append("")
+    insight_parts.append(
+        "💡 **Kết luận:** Hãy kiểm tra xem đối thủ có đang đẩy mạnh khuyến mãi không và "
+        "theo dõi các tin tức vĩ mô ảnh hưởng đến nhu cầu tiêu dùng."
+    )
+
+    yield await _stream_sse_event("insight", {"text": "\n".join(insight_parts)})
+    yield await _stream_sse_event("complete", {
+        "message": "Phân tích Hybrid hoàn thành!",
+        "tool_used": "hybrid_revenue_analysis",
+        "tinyfish_used": quant_result is not None,
+        "exa_used": qual_result is not None,
+    })
 
 
 async def _process_dashboard(
@@ -647,20 +973,58 @@ async def chat_stream(request: ChatRequest):
         # ── Collect assistant response để lưu vào history ──────────────────────────
         assistant_response_parts = []
 
-        # Route to predict, dashboard, or query based on intent
+        # ── Intent Routing: phân loại câu hỏi và gọi đúng Tool ───────────────────────────
+        # Priority: predict > dashboard > hybrid_revenue_drop > market_quant > market_qual > default
         if _is_predict_request(request.message):
             async for event in _process_predict(request.message, request.user_id):
                 yield event
-                # Thu thập insight từ predict response
                 try:
                     parsed = json.loads(event.split("data: ", 1)[1]) if "data: " in event else {}
                     if "text" in parsed:
                         assistant_response_parts.append(parsed["text"])
                 except Exception:
                     pass
+
         elif _is_dashboard_request(request.message):
             async for event in _process_dashboard(request.message, request.user_id):
                 yield event
+
+        elif _is_hybrid_revenue_drop(request.message):
+            # Logic gộp: doanh thu rớt → gọi cả TinyFish + Exa
+            async for event in _process_hybrid_revenue_drop(request.message, request.user_id):
+                yield event
+                try:
+                    if "data: " in event:
+                        parsed = json.loads(event.split("data: ", 1)[1])
+                        if "text" in parsed:
+                            assistant_response_parts.append(parsed["text"])
+                except Exception:
+                    pass
+
+        elif _is_market_quant_request(request.message):
+            # Tool market_quant_scraper: giá đối thủ, số lượng (TinyFish)
+            async for event in _process_market_quant(request.message, request.user_id):
+                yield event
+                try:
+                    if "data: " in event:
+                        parsed = json.loads(event.split("data: ", 1)[1])
+                        if "text" in parsed:
+                            assistant_response_parts.append(parsed["text"])
+                except Exception:
+                    pass
+
+        elif _is_market_qual_request(request.message):
+            # Tool market_qual_search: tin tức, bối cảnh, lý do (Exa)
+            async for event in _process_market_qual(request.message, request.user_id):
+                yield event
+                try:
+                    if "data: " in event:
+                        parsed = json.loads(event.split("data: ", 1)[1])
+                        if "text" in parsed:
+                            assistant_response_parts.append(parsed["text"])
+                except Exception:
+                    pass
+
         else:
             async for event in _process_with_dify(
                 message=request.message,

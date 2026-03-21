@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     # ── TinyFish ─────────────────────────────────────────────────────────────
     tinyfish_api_key: str = ""
 
+    # ── Exa (Qualitative Market News Search) ────────────────────────────────
+    exa_api_key: str = ""
+
+    # ── ElevenLabs (Text-to-Speech Audio Briefing) ──────────────────────────
+    elevenlabs_api_key: str = ""
+    elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"  # Default: Rachel (EN)
+
     # ── Zilliz ───────────────────────────────────────────────────────────────
     zilliz_uri: str = ""
     zilliz_token: str = ""
@@ -68,6 +75,14 @@ class Settings(BaseSettings):
     @property
     def is_tinyfish_configured(self) -> bool:
         return bool(self.tinyfish_api_key)
+
+    @property
+    def is_exa_configured(self) -> bool:
+        return bool(self.exa_api_key)
+
+    @property
+    def is_elevenlabs_configured(self) -> bool:
+        return bool(self.elevenlabs_api_key)
 
     @property
     def is_dify_configured(self) -> bool:

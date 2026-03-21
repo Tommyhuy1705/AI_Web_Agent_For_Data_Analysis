@@ -1,14 +1,17 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, Sparkles, Loader2, BarChart2, CheckCircle2, MessageSquareText, Search, Database, ChevronDown, ChevronRight, Check, Copy, History, PlusCircle, Command, MessageSquare, Trash2, X, Clock } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
-import { vi } from "date-fns/locale";
-import { useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import {
+  Send, Bot, User, Sparkles, Loader2, BarChart2, CheckCircle2,
+  MessageSquareText, Search, Database, ChevronDown, ChevronRight,
+  Check, Copy, History, PlusCircle, MessageSquare, Trash2, X, Clock,
+  Mic, MicOff, Volume2, VolumeX,
+} from "lucide-react";
 import { useAgentStore, ChatSession, ChatMessage as ChatMessageType } from "@/store/useAgentStore";
 import { useAgentStream } from "@/hooks/useAgentStream";
 import ReactMarkdown from "react-markdown";
 import { cn } from "@/lib/utils";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 // Format timestamps
@@ -17,6 +20,9 @@ const formatTime = (date?: Date) => {
   return new Intl.DateTimeFormat("vi-VN", { hour: "2-digit", minute: "2-digit" }).format(date);
 };
 
+// ------------------------------------------------------------------ //
+//  SQL Viewer                                                         //
+// ------------------------------------------------------------------ //
 function SQLViewer({ sql }: { sql: string }) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -37,11 +43,7 @@ function SQLViewer({ sql }: { sql: string }) {
       >
         <Database className="w-3 h-3" />
         SQL
-        {expanded ? (
-          <ChevronDown className="w-3 h-3" />
-        ) : (
-          <ChevronRight className="w-3 h-3" />
-        )}
+        {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
       </button>
 
       {expanded && (
@@ -66,10 +68,107 @@ function SQLViewer({ sql }: { sql: string }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Chat History Sidebar                                              */
-/* ------------------------------------------------------------------ */
+// ------------------------------------------------------------------ //
+//  Audio Briefing Button                                              //
+// ------------------------------------------------------------------ //
+function AudioBriefingButton({ text }: { text: string }) {
+  const [isLoading, setIsLoading] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  const handlePlay = async () => {
+    if (isPlaying) {
+      // Stop playback
+      audioRef.current?.pause();
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0;
+      }
+      setIsPlaying(false);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/audio/briefing`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: text.slice(0, 2000) }), // Giới hạn 2000 ký tự
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        console.error("Audio briefing error:", err);
+        alert(err.detail || "Không thể tạo audio. Vui lòng kiểm tra ELEVENLABS_API_KEY.");
+        return;
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+
+      // Dọn dẹp audio cũ
+      if (audioRef.current) {
+        audioRef.current.pause();
+        URL.revokeObjectURL(audioRef.current.src);
+      }
+
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => {
+        setIsPlaying(false);
+        URL.revokeObjectURL(url);
+      };
+      audio.onerror = () => {
+        setIsPlaying(false);
+      };
+
+      await audio.play();
+      setIsPlaying(true);
+    } catch (e) {
+      console.error("Audio briefing failed:", e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      audioRef.current?.pause();
+      if (audioRef.current?.src) {
+        URL.revokeObjectURL(audioRef.current.src);
+      }
+    };
+  }, []);
+
+  return (
+    <button
+      type="button"
+      onClick={handlePlay}
+      disabled={isLoading}
+      title={isPlaying ? "Dừng phát" : "Nghe Báo Cáo"}
+      className={cn(
+        "inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-md border transition-colors font-medium mt-2",
+        isPlaying
+          ? "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100"
+          : "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100",
+        isLoading && "opacity-60 cursor-wait"
+      )}
+    >
+      {isLoading ? (
+        <Loader2 className="w-3 h-3 animate-spin" />
+      ) : isPlaying ? (
+        <VolumeX className="w-3 h-3" />
+      ) : (
+        <Volume2 className="w-3 h-3" />
+      )}
+      {isLoading ? "Đang tạo..." : isPlaying ? "Dừng" : "Nghe Báo Cáo"}
+    </button>
+  );
+}
+
+// ------------------------------------------------------------------ //
+//  Chat History Sidebar                                               //
+// ------------------------------------------------------------------ //
 function ChatHistorySidebar({
   isOpen,
   onClose,
@@ -89,7 +188,6 @@ function ChatHistorySidebar({
     sessionId: currentSessionId,
   } = useAgentStore();
 
-  // Load sessions on open
   useEffect(() => {
     if (!isOpen) return;
     const fetchSessions = async () => {
@@ -154,26 +252,18 @@ function ChatHistorySidebar({
 
   return (
     <div className="absolute inset-0 z-20 flex">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/20" onClick={onClose} />
-
-      {/* Sidebar panel */}
       <div className="relative z-30 w-72 h-full bg-background border-r shadow-xl flex flex-col">
-        {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b">
           <div className="flex items-center gap-2">
             <History className="w-4 h-4 text-primary" />
             <span className="font-semibold text-sm">Lịch sử hội thoại</span>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 rounded hover:bg-muted text-muted-foreground"
-          >
+          <button onClick={onClose} className="p-1 rounded hover:bg-muted text-muted-foreground">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Sessions list */}
         <div className="flex-1 overflow-y-auto py-2">
           {isLoadingSessions ? (
             <div className="flex items-center justify-center py-8">
@@ -225,21 +315,81 @@ function ChatHistorySidebar({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Main ChatInterface                                                */
-/* ------------------------------------------------------------------ */
+// ------------------------------------------------------------------ //
+//  Voice Input Hook (Web Speech API)                                  //
+// ------------------------------------------------------------------ //
+function useVoiceInput(onTranscript: (text: string) => void) {
+  const [isListening, setIsListening] = useState(false);
+  const [isSupported, setIsSupported] = useState(false);
+  const recognitionRef = useRef<any>(null);
 
+  useEffect(() => {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      setIsSupported(true);
+      const recognition = new SpeechRecognition();
+      recognition.lang = "vi-VN";
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        onTranscript(transcript);
+        setIsListening(false);
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error("Speech recognition error:", event.error);
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+    }
+  }, [onTranscript]);
+
+  const startListening = useCallback(() => {
+    if (!recognitionRef.current || isListening) return;
+    try {
+      recognitionRef.current.start();
+      setIsListening(true);
+    } catch (e) {
+      console.error("Failed to start recognition:", e);
+    }
+  }, [isListening]);
+
+  const stopListening = useCallback(() => {
+    if (!recognitionRef.current || !isListening) return;
+    recognitionRef.current.stop();
+    setIsListening(false);
+  }, [isListening]);
+
+  return { isListening, isSupported, startListening, stopListening };
+}
+
+// ------------------------------------------------------------------ //
+//  Main ChatInterface                                                 //
+// ------------------------------------------------------------------ //
 export default function ChatInterface() {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
+
   const { messages, startNewChat } = useAgentStore();
   const [showHistory, setShowHistory] = useState(false);
-  const handleNewChat = useCallback(() => {
-    startNewChat();
-  }, [startNewChat]);
-  const isTyping = false; // Mock while not in store
+  const handleNewChat = useCallback(() => startNewChat(), [startNewChat]);
+  const isTyping = false;
   const { sendMessage } = useAgentStream();
+
+  // Voice Input
+  const handleTranscript = useCallback((text: string) => {
+    setInput((prev) => (prev ? `${prev} ${text}` : text));
+  }, []);
+  const { isListening, isSupported, startListening, stopListening } = useVoiceInput(handleTranscript);
 
   // Scroll to bottom on new message
   useEffect(() => {
@@ -258,13 +408,21 @@ export default function ChatInterface() {
     setInput(text);
   };
 
+  const handleMicClick = () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-white/50 dark:bg-slate-900/30">
       {/* Chat History Sidebar */}
-      <ChatHistorySidebar 
-        isOpen={showHistory} 
-        onClose={() => setShowHistory(false)} 
-        userId="default_user" 
+      <ChatHistorySidebar
+        isOpen={showHistory}
+        onClose={() => setShowHistory(false)}
+        userId="default_user"
       />
 
       {/* Header */}
@@ -312,25 +470,25 @@ export default function ChatInterface() {
             </div>
             <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100 mb-2">Tôi có thể giúp gì cho bạn hôm nay?</h3>
             <p className="text-slate-500 dark:text-slate-400 text-sm max-w-sm mb-8 leading-relaxed">
-              Tôi có thể phân tích số liệu tài chính, tra cứu mét khối khách hàng, tìm hiểu sản phẩm hoặc tạo dashboard thống kê.
+              Tôi có thể phân tích số liệu tài chính, tra cứu khách hàng, tìm hiểu sản phẩm hoặc tạo dashboard thống kê.
             </p>
-            
+
             <div className="grid grid-cols-1 w-full max-w-md gap-3 text-left">
-              <button 
+              <button
                 onClick={() => handleSuggestionClick("Phân tích doanh thu tháng này so với tháng trước")}
                 className="group flex gap-3 p-3.5 px-4 rounded-2xl bg-white dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/50 hover:bg-indigo-50/50 hover:border-indigo-200 dark:hover:bg-indigo-900/20 dark:hover:border-indigo-800 transition-all shadow-sm hover:shadow"
               >
                 <BarChart2 className="w-5 h-5 text-indigo-500 shrink-0 group-hover:scale-110 transition-transform" />
                 <span className="text-sm text-slate-600 dark:text-slate-300 font-medium">Phân tích doanh thu tháng này so với tháng trước</span>
               </button>
-              <button 
+              <button
                 onClick={() => handleSuggestionClick("Top 5 sản phẩm bán chạy nhất là gì?")}
                 className="group flex gap-3 p-3.5 px-4 rounded-2xl bg-white dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/50 hover:bg-emerald-50/50 hover:border-emerald-200 dark:hover:bg-emerald-900/20 dark:hover:border-emerald-800 transition-all shadow-sm hover:shadow"
               >
                 <Search className="w-5 h-5 text-emerald-500 shrink-0 group-hover:scale-110 transition-transform" />
                 <span className="text-sm text-slate-600 dark:text-slate-300 font-medium">Top 5 sản phẩm có doanh thu cao nhất</span>
               </button>
-              <button 
+              <button
                 onClick={() => handleSuggestionClick("Tạo dashboard tổng quan về tình hình kinh doanh")}
                 className="group flex gap-3 p-3.5 px-4 rounded-2xl bg-white dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/50 hover:bg-amber-50/50 hover:border-amber-200 dark:hover:bg-amber-900/20 dark:hover:border-amber-800 transition-all shadow-sm hover:shadow"
               >
@@ -361,7 +519,7 @@ export default function ChatInterface() {
               </div>
 
               {/* Message Content */}
-              <div 
+              <div
                 className={cn(
                   "max-w-[80%] flex flex-col group",
                   msg.role === "user" ? "items-end" : "items-start"
@@ -379,41 +537,47 @@ export default function ChatInterface() {
                   {msg.role === "assistant" && msg.metadata?.action_type && (
                     <div className="flex flex-col gap-1.5 mb-2 mt-1 w-full bg-slate-50/50 dark:bg-slate-900/50 p-2.5 rounded-xl border border-slate-100/50 dark:border-slate-700/30">
                       <div className="flex items-center gap-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Đã tra cứu {msg.metadata.action_type === 'sql' ? 'Cơ sở dữ liệu' : 'Tài nguyên tri thức'}
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Đã tra cứu {msg.metadata.action_type === "sql" ? "Cơ sở dữ liệu" : "Tài nguyên tri thức"}
                       </div>
                       <div className="text-[11px] text-slate-500 bg-white/50 dark:bg-[#111827]/50 p-1.5 rounded-md font-mono truncate max-w-full">
-                        {msg.metadata.action_input ? (typeof msg.metadata.action_input === 'string' ? msg.metadata.action_input : JSON.stringify(msg.metadata.action_input)) : "Đã thực thi..."}
+                        {msg.metadata.action_input
+                          ? typeof msg.metadata.action_input === "string"
+                            ? msg.metadata.action_input
+                            : JSON.stringify(msg.metadata.action_input)
+                          : "Đã thực thi..."}
                       </div>
                     </div>
                   )}
 
                   {/* Main Text Content */}
                   {msg.content && (
-                    <div className={cn(
-                      "prose max-w-none break-words leading-relaxed",
-                      msg.role === "user" ? "prose-invert text-white marker:text-white" : "prose-slate dark:prose-invert",
-                      "prose-p:m-0 prose-ul:m-0 prose-li:m-0 prose-code:px-1 prose-code:py-0.5 prose-code:rounded-md prose-code:bg-black/10 dark:prose-code:bg-white/10 prose-code:before:content-none prose-code:after:content-none"
-                    )}>
+                    <div
+                      className={cn(
+                        "prose max-w-none break-words leading-relaxed",
+                        msg.role === "user"
+                          ? "prose-invert text-white marker:text-white"
+                          : "prose-slate dark:prose-invert",
+                        "prose-p:m-0 prose-ul:m-0 prose-li:m-0 prose-code:px-1 prose-code:py-0.5 prose-code:rounded-md prose-code:bg-black/10 dark:prose-code:bg-white/10 prose-code:before:content-none prose-code:after:content-none"
+                      )}
+                    >
                       <ReactMarkdown>{msg.content}</ReactMarkdown>
                     </div>
                   )}
-                  
+
                   {/* SQL Viewer */}
-                  {msg.metadata?.sql && (
-                    <SQLViewer sql={msg.metadata.sql} />
-                  )}
-                  
-                  {/* SQL Viewer */}
-                  {msg.metadata?.sql && (
-                    <SQLViewer sql={msg.metadata.sql} />
-                  )}
+                  {msg.metadata?.sql && <SQLViewer sql={msg.metadata.sql} />}
 
                   {/* Dashboard Notification Pill */}
                   {msg.metadata?.isDashboard && (
                     <div className="mt-3 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 text-indigo-700 dark:text-indigo-400 text-[13px] font-medium select-none shadow-sm pb-2 cursor-default">
-                      <BarChart2 className="w-4 h-4" /> 
+                      <BarChart2 className="w-4 h-4" />
                       Đã tạo {msg.metadata.allCharts?.length || 0} biểu đồ trên bảng phân tích
                     </div>
+                  )}
+
+                  {/* 🔊 Audio Briefing Button — chỉ hiện cho assistant messages có nội dung */}
+                  {msg.role === "assistant" && msg.content && msg.content.length > 20 && (
+                    <AudioBriefingButton text={msg.content} />
                   )}
                 </div>
 
@@ -427,7 +591,7 @@ export default function ChatInterface() {
             </div>
           ))
         )}
-        
+
         {isTyping && (
           <div className="flex gap-4 w-full animate-fade-in h-12">
             <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-700 flex items-center justify-center text-indigo-500 shadow-sm">
@@ -455,10 +619,35 @@ export default function ChatInterface() {
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Hỏi SIA bất kỳ về số liệu nào..."
+              placeholder={isListening ? "🎤 Đang nghe... Hãy nói..." : "Hỏi SIA bất kỳ về số liệu nào..."}
               disabled={isTyping}
-              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-full py-3.5 pl-11 pr-16 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500/50 transition-all font-medium disabled:opacity-50 text-slate-700 dark:text-slate-200 placeholder:text-slate-400 shadow-inner"
+              className={cn(
+                "w-full bg-slate-50 dark:bg-slate-900 border rounded-full py-3.5 pl-11 pr-24 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500/50 transition-all font-medium disabled:opacity-50 text-slate-700 dark:text-slate-200 placeholder:text-slate-400 shadow-inner",
+                isListening
+                  ? "border-red-400 dark:border-red-500 ring-2 ring-red-500/20"
+                  : "border-slate-200 dark:border-slate-700"
+              )}
             />
+
+            {/* 🎤 Microphone Button */}
+            {isSupported && (
+              <button
+                type="button"
+                onClick={handleMicClick}
+                disabled={isTyping}
+                title={isListening ? "Dừng ghi âm" : "Ghi âm giọng nói"}
+                className={cn(
+                  "absolute right-12 top-1.5 bottom-1.5 w-[36px] rounded-full flex items-center justify-center transition-all disabled:opacity-40",
+                  isListening
+                    ? "bg-red-500 hover:bg-red-600 text-white shadow-md shadow-red-500/30 animate-pulse"
+                    : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400"
+                )}
+              >
+                {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              </button>
+            )}
+
+            {/* Send Button */}
             <button
               type="submit"
               disabled={!input.trim() || isTyping}
@@ -468,8 +657,30 @@ export default function ChatInterface() {
             </button>
           </div>
         </form>
-        <div className="text-center mt-3">
-          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">AI có thể nhầm lẫn. Hãy xác minh các dữ liệu quan trọng trước khi ra quyết định.</span>
+
+        {/* Voice status indicator */}
+        {isListening && (
+          <div className="flex items-center justify-center gap-2 mt-2">
+            <span className="flex gap-0.5">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <span
+                  key={i}
+                  className="w-0.5 bg-red-500 rounded-full animate-bounce"
+                  style={{
+                    height: `${8 + Math.random() * 12}px`,
+                    animationDelay: `${i * 0.1}s`,
+                  }}
+                />
+              ))}
+            </span>
+            <span className="text-[11px] text-red-500 font-medium">Đang ghi âm...</span>
+          </div>
+        )}
+
+        <div className="text-center mt-2">
+          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+            AI có thể nhầm lẫn. Hãy xác minh các dữ liệu quan trọng trước khi ra quyết định.
+          </span>
         </div>
       </div>
     </div>
