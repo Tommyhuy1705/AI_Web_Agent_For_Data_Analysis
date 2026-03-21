@@ -255,3 +255,95 @@
 - [ ] Test New Chat button
 
 **Commit:** `test(system): e2e validation of phase 7 features`
+
+---
+
+## Phase 8: Omni-Revenue Agent — Đa Giác Quan & Tình Báo Thị Trường (2026-03-21)
+
+### Task 1: Fix Dockerfile với Playwright Dependencies ✅
+- [x] Thay base image từ `python:3.11-slim` sang `python:3.11` (full Debian) để hỗ trợ Playwright
+- [x] Thêm các OS dependencies cho Chromium (libnss3, libatk1.0-0, libgbm1, fonts-liberation...)
+- [x] Thêm `RUN pip install playwright && playwright install --with-deps chromium` vào Dockerfile
+- [x] Thêm `playwright>=1.44.0` vào `requirements.txt`
+- [x] Cấu hình `PLAYWRIGHT_BROWSERS_PATH` cho non-root user (appuser)
+- [x] TinyFish có thể mở trình duyệt headless Chromium trên môi trường Cloud/Docker
+
+**Commit:** `fix(docker): add Playwright/Chromium support for TinyFish headless browser`
+
+### Task 2: Cài đặt Exa, viết exa_service.py ✅
+- [x] Thêm `exa-py>=1.0.0` vào `requirements.txt`
+- [x] Tạo `backend/services/exa_service.py` với các hàm:
+  - `search_market_news(query, num_results, days_back)` — tìm top 3 bài báo mới nhất
+  - `get_market_context(topic, context_type)` — lấy bối cảnh theo loại (competitor/trend/macro/weather)
+  - `analyze_revenue_drop_context()` — phân tích bối cảnh khi doanh thu giảm
+- [x] Thêm `exa_api_key` vào `backend/core/config.py`
+- [x] Thêm property `is_exa_configured` vào Settings
+
+**Commit:** `feat(backend): add Exa Neural Search service for qualitative market intelligence`
+
+### Task 3: Cập nhật Tool Routing (Intent Router) ✅
+- [x] Thêm keyword lists vào `chat_router.py`:
+  - `MARKET_QUANT_KEYWORDS` — giá đối thủ, số lượng bán, % giảm giá (→ TinyFish)
+  - `MARKET_QUAL_KEYWORDS` — tại sao, tin tức, xu hướng, bối cảnh (→ Exa)
+  - `HYBRID_REVENUE_DROP_KEYWORDS` — doanh thu giảm/rớt (→ cả TinyFish + Exa)
+- [x] Thêm detection functions: `_is_market_quant_request()`, `_is_market_qual_request()`, `_is_hybrid_revenue_drop()`
+- [x] Thêm processing functions:
+  - `_process_market_quant()` — Tool: market_quant_scraper (TinyFish)
+  - `_process_market_qual()` — Tool: market_qual_search (Exa)
+  - `_process_hybrid_revenue_drop()` — Logic gộp: TinyFish + Exa → 1 insight hoàn chỉnh
+- [x] Cập nhật routing priority trong `chat_stream`: predict > dashboard > hybrid > quant > qual > default
+- [x] Thêm Tool Descriptions comments (market_quant_scraper, market_qual_search, Hybrid logic)
+
+**Commit:** `feat(backend): dual intelligence engine - TinyFish (quant) + Exa (qual) with hybrid routing`
+
+### Task 4: Voice Input — Web Speech API (Microphone) ✅
+- [x] Thêm `useVoiceInput` hook vào `ChatInterface.tsx` sử dụng `window.SpeechRecognition` / `webkitSpeechRecognition`
+- [x] Cấu hình: `lang="vi-VN"`, `continuous=false`, `interimResults=false`
+- [x] Thêm nút 🎤 Ghi âm bên cạnh ô input (chỉ hiện khi browser hỗ trợ)
+- [x] Khi đang nghe: nút chuyển sang màu đỏ + animation pulse, placeholder thay đổi
+- [x] Transcript được điền vào ô input (append nếu đã có text)
+- [x] Voice status indicator (waveform animation) hiển thị khi đang ghi âm
+- [x] Import icons: `Mic`, `MicOff`, `Volume2`, `VolumeX` từ lucide-react
+
+**Commit:** `feat(frontend): add voice input with Web Speech API (microphone button)`
+
+### Task 5: Backend Audio Service — ElevenLabs TTS ✅
+- [x] Thêm `elevenlabs>=1.0.0` vào `requirements.txt`
+- [x] Tạo `backend/services/audio_service.py`:
+  - `text_to_speech_bytes()` — trả về MP3 bytes (full file)
+  - `text_to_speech_stream()` — async generator stream chunks
+  - `get_available_voices()` — lấy danh sách voices từ ElevenLabs
+- [x] Thêm `elevenlabs_api_key`, `elevenlabs_voice_id` vào `backend/core/config.py`
+- [x] Thêm property `is_elevenlabs_configured` vào Settings
+- [x] Model mặc định: `eleven_multilingual_v2` (hỗ trợ tiếng Việt)
+
+**Commit:** `feat(backend): ElevenLabs TTS audio service for voice briefings`
+
+### Task 6: Audio Endpoint & Frontend Integration ✅
+- [x] Tạo `backend/api/routes/audio_router.py`:
+  - `GET /api/audio/status` — kiểm tra ElevenLabs configuration
+  - `POST /api/audio/briefing` — nhận text, trả về MP3 (full hoặc stream)
+  - `GET /api/audio/voices` — danh sách voices có sẵn
+- [x] Đăng ký `audio_router` vào `backend/main.py`
+- [x] Thêm Exa + ElevenLabs status vào `/health` endpoint
+- [x] Thêm `AudioBriefingButton` component vào `ChatInterface.tsx`:
+  - Hiển thị nút 🔊 Nghe Báo Cáo bên dưới mỗi câu trả lời AI
+  - Gọi `POST /api/audio/briefing`, nhận blob MP3
+  - Dùng `new Audio(url)` để play ngay lập tức
+  - Nút chuyển sang 🔇 Dừng khi đang phát
+  - Cleanup URL object khi unmount
+
+**Commit:** `feat(frontend): audio briefing button with ElevenLabs TTS playback`
+
+### Files Created/Modified
+| File | Action | Description |
+|------|--------|-------------|
+| `backend/Dockerfile` | Modified | Added Playwright/Chromium dependencies |
+| `backend/requirements.txt` | Modified | Added playwright, exa-py, elevenlabs |
+| `backend/core/config.py` | Modified | Added EXA_API_KEY, ELEVENLABS_API_KEY settings |
+| `backend/services/exa_service.py` | Created | Exa Neural Search for qualitative market intel |
+| `backend/services/audio_service.py` | Created | ElevenLabs TTS service |
+| `backend/api/routes/audio_router.py` | Created | /api/audio/briefing endpoint |
+| `backend/api/routes/chat_router.py` | Modified | Added market intel routing + 3 new process functions |
+| `backend/main.py` | Modified | Registered audio_router, added health status |
+| `frontend/components/agent/ChatInterface.tsx` | Modified | Voice input + Audio briefing button |
