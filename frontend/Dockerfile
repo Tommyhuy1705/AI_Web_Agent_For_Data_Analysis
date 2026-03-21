@@ -32,7 +32,9 @@ COPY . .
 
 # Build arguments for environment variables baked at build time
 ARG NEXT_PUBLIC_BACKEND_URL=http://backend:8000
+ARG NEXT_PUBLIC_API_URL=http://backend:8000
 ENV NEXT_PUBLIC_BACKEND_URL=$NEXT_PUBLIC_BACKEND_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
@@ -55,7 +57,8 @@ RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
 # Copy built artifacts from builder
-COPY --from=builder /app/public ./public
+# Create empty public dir (project has no static assets)
+RUN mkdir -p ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
