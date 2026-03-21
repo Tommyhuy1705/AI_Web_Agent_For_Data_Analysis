@@ -2,6 +2,15 @@
 Core Configuration — SIA Backend
 Centralized settings management using pydantic-settings.
 All environment variables are parsed and validated here.
+
+Active integrations:
+- Supabase (PostgreSQL analytics DB)
+- DashScope/Qwen (Primary LLM)
+- OpenAI (Fallback LLM)
+- TinyFish (Quantitative market crawl)
+- Exa (Qualitative market news search)
+- ElevenLabs (Text-to-Speech audio briefing)
+- SendGrid (Alarm email notifications)
 """
 from functools import lru_cache
 from pathlib import Path
@@ -35,42 +44,37 @@ class Settings(BaseSettings):
     supabase_db_password: str = ""
     supabase_db_name: str = "postgres"
 
-    # ── LLM ──────────────────────────────────────────────────────────────────
-    llm_provider: str = "openai"          # "openai" | "qwen"
+    # ── LLM — DashScope/Qwen (primary) → OpenAI (fallback) ──────────────────
+    llm_provider: str = "openai"            # "openai" | "qwen"
     openai_api_key: str = ""
-    dashscope_api_key: str = ""           # Qwen / Alibaba DashScope
+    dashscope_api_key: str = ""             # Qwen / Alibaba DashScope
+    dashscope_model: str = "qwen3.5-122b-a10b"
 
-    # ── Dify ─────────────────────────────────────────────────────────────────
-    dify_api_url: str = ""
-    dify_api_key: str = ""
-
-    # ── SendGrid ─────────────────────────────────────────────────────────────
+    # ── SendGrid (Alarm Email) ────────────────────────────────────────────────
     sendgrid_api_key: str = ""
     sendgrid_from_email: str = ""
-    alarm_recipient_emails: str = ""      # Comma-separated list
+    alert_recipients: str = ""              # Comma-separated list
 
-    # ── TinyFish ─────────────────────────────────────────────────────────────
+    # ── TinyFish (Quantitative Market Crawl) ─────────────────────────────────
     tinyfish_api_key: str = ""
 
-    # ── Exa (Qualitative Market News Search) ────────────────────────────────
+    # ── Exa (Qualitative Market News Search) ─────────────────────────────────
     exa_api_key: str = ""
 
-    # ── ElevenLabs (Text-to-Speech Audio Briefing) ──────────────────────────
+    # ── ElevenLabs (Text-to-Speech Audio Briefing) ───────────────────────────
     elevenlabs_api_key: str = ""
-    elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"  # Default: Rachel (EN)
+    elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"   # Default: Rachel (EN)
+    elevenlabs_model_id: str = "eleven_multilingual_v2"
 
-    # ── Zilliz ───────────────────────────────────────────────────────────────
-    zilliz_uri: str = ""
-    zilliz_token: str = ""
-
-    # ── AWS (for deployment metadata) ────────────────────────────────────────
+    # ── AWS (deployment metadata) ─────────────────────────────────────────────
     aws_region: str = "ap-southeast-1"
     ecr_registry: str = ""
 
+    # ── Computed properties ───────────────────────────────────────────────────
     @property
     def alarm_emails(self) -> list[str]:
         """Parse comma-separated alarm recipient emails."""
-        return [e.strip() for e in self.alarm_recipient_emails.split(",") if e.strip()]
+        return [e.strip() for e in self.alert_recipients.split(",") if e.strip()]
 
     @property
     def is_tinyfish_configured(self) -> bool:
@@ -83,10 +87,6 @@ class Settings(BaseSettings):
     @property
     def is_elevenlabs_configured(self) -> bool:
         return bool(self.elevenlabs_api_key)
-
-    @property
-    def is_dify_configured(self) -> bool:
-        return bool(self.dify_api_url and self.dify_api_key)
 
 
 @lru_cache
