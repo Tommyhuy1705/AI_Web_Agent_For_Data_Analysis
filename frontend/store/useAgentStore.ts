@@ -25,6 +25,8 @@ export interface ChatMessage {
     panelCount?: number;
     insight?: string;
     agentThoughts?: AgentThought[];
+    action_type?: string;
+    action_input?: string;
   };
 }
 
@@ -41,6 +43,8 @@ export interface AgentThought {
   thought: string;
   tool?: string;
   toolInput?: string;
+  action_type?: string;
+  action_input?: string;
 }
 
 export interface AlarmEvent {
