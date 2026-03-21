@@ -1,7 +1,7 @@
 """Pydantic schemas for Market Intelligence endpoints."""
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field
 
 
 class CrawlRequest(BaseModel):

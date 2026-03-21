@@ -7,7 +7,6 @@ Tables:
   - public.chat_sessions: metadata của mỗi phiên chat (PK: id uuid)
   - public.chat_messages: từng tin nhắn trong session (PK: id uuid, FK: session_id -> chat_sessions.id)
 """
-import json
 import logging
 import uuid
 from datetime import datetime, timezone
