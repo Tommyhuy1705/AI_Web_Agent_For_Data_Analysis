@@ -190,9 +190,9 @@
 ### Commits (Phase 6)
 | Commit | Message |
 |--------|----------|
-| (pending) | `test(data): reimport CSV data and load mock staging data` |
-| (pending) | `test(dashboard): add 50 fake sales records for refresh test` |
-| (pending) | `test(alarm): validate alarm trigger at -66.67% revenue drop` |
-| (pending) | `feat(tinyfish): configure API key and test SSE crawler on Tiki` |
-| (pending) | `fix(upsert): use PATCH for hourly_snapshot update to avoid 409 conflict` |
-| (pending) | `docs: add CHECKLIST.md phase 6 tracking` |
+| `43087a6` | `docs: add CHECKLIST.md phase 6 - TinyFish integration and system testing` |
+| `e7c2a43` | `test(data): reimport CSV data (dim_customers 1000, dim_products 1681, fact_sales 1000) and load 500 mock staging records` |
+| `298562f` | `test(dashboard): add 50 fake sales records script for dashboard refresh test after 2-min dbt scheduler` |
+| `05b5995` | `test(alarm): validate alarm trigger at -66.67% revenue drop, SendGrid email HTTP 202 confirmed` |
+| `ba29977` | `feat(tinyfish): configure TINYFISH_API_KEY and test SSE crawler on Tiki.vn - 5 competitor products crawled` |
+| `5826ea1` | `fix(upsert): document upsert_via_rest 409 conflict bug - use PATCH for hourly_snapshot update to avoid unique constraint violation` |
