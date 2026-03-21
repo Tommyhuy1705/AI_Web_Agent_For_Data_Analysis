@@ -187,16 +187,23 @@ jobs:
             export IMAGE_TAG=latest
 
             # Stop and remove old containers to avoid name conflicts
-            docker compose -f docker-compose.prod.yml down --remove-orphans 2>/dev/null || true
-            docker rm -f sia-backend sia-frontend 2>/dev/null || true
+            echo "Stopping docker compose..."
+            docker compose -f docker-compose.prod.yml down --remove-orphans --timeout=10 || true
+            sleep 2
+            
+            # Force remove any lingering containers
+            echo "Removing lingering containers..."
+            docker ps -a --filter "name=sia-" --format "{{.ID}}" | xargs -r docker rm -f
+            sleep 2
+            
             echo "✓ Old containers stopped"
 
             # Pull latest images
             docker compose -f docker-compose.prod.yml pull
             echo "✓ Images pulled from ECR"
 
-            # Start fresh containers
-            docker compose -f docker-compose.prod.yml up -d --force-recreate
+            # Start fresh containers with proper timeout
+            docker compose -f docker-compose.prod.yml up -d
             echo "✓ Containers started"
 
             # Wait for backend health check
