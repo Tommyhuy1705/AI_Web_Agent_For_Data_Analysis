@@ -1,6 +1,7 @@
 /**
  * Zustand Store - Agent State Management
  * Quản lý state cho chat messages, charts, alarms, và loading states.
+ * Hỗ trợ multi-chart cho dashboard mode.
  */
 
 import { create } from "zustand";
@@ -18,6 +19,9 @@ export interface ChatMessage {
     sql?: string;
     rowCount?: number;
     chartConfig?: ChartConfig | null;
+    allCharts?: ChartConfig[];
+    isDashboard?: boolean;
+    panelCount?: number;
     insight?: string;
     agentThoughts?: AgentThought[];
   };
@@ -29,6 +33,7 @@ export interface ChartConfig {
   description?: string;
   config: Record<string, any>;
   data: Record<string, any>[];
+  dashboard_panel?: string;
 }
 
 export interface AgentThought {

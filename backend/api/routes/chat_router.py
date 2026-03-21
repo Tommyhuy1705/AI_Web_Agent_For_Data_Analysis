@@ -5,10 +5,11 @@ và stream kết quả về qua SSE.
 
 Flow:
 1. Frontend gửi câu hỏi -> /api/chat
-2. FastAPI: Detect intent (predict vs query)
+2. FastAPI: Detect intent (predict vs dashboard vs query)
 3. Nếu predict: Gọi predict tool
-4. Nếu query: LLM sinh SQL -> Execute -> Chart -> Insight
-5. Stream kết quả về Frontend qua SSE
+4. Nếu dashboard: Chạy multi-query → multi-chart
+5. Nếu query: LLM sinh SQL -> Execute -> Chart -> Insight
+6. Stream kết quả về Frontend qua SSE
 """
 
 import asyncio
@@ -17,7 +18,7 @@ import logging
 import os
 import re
 import uuid
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
 from fastapi import APIRouter, HTTPException
@@ -52,12 +53,80 @@ If user asks destructive/admin action, return only:
 SELECT 'Read-only policy: destructive or mutating actions are not allowed' AS message
 """
 
+SQL_SYSTEM_PROMPT = """{guardrail}
+
+You are a SQL expert for a sales analytics database on PostgreSQL (Supabase PostgREST).
+
+CRITICAL RULES:
+1. NEVER use schema prefix (no "analytics_mart."). Use plain table/view names.
+2. NEVER use column aliases (no AS). PostgREST does not support them.
+3. NEVER use aggregate functions (SUM, COUNT, AVG, GROUP BY). Use pre-computed views.
+4. ALWAYS prefer views over raw tables. Views already have aggregated data.
+5. Return ONLY raw SQL. No markdown code blocks, no explanation.
+
+Tables:
+- fact_sales: sale_id(int), order_date(date), product_id(int), customer_id(int), quantity(int), unit_price(numeric), total_amount(numeric), discount(numeric), channel(text), payment_method(text)
+- dim_products: product_id(int), product_name(text), category(text), sub_category(text), brand(text), unit_price(numeric)
+- dim_customers: customer_id(int), customer_name(text), email(text), segment(text: 'Premium'|'Standard'|'Basic'), region(text), city(text), country(text)
+
+Views (pre-aggregated, use these first):
+- v_daily_revenue: order_date(date), total_orders(int), total_quantity(int), total_revenue(numeric), avg_order_value(numeric)
+- v_monthly_revenue: month(text, format 'YYYY-MM' e.g. '2025-03'), total_orders(int), total_revenue(numeric), avg_order_value(numeric)
+- v_product_performance: product_id(int), product_name(text), category(text), total_orders(int), total_quantity(int), total_revenue(numeric)
+- v_customer_segment_revenue: segment(text), region(text), total_customers(int), total_orders(int), total_revenue(numeric)
+
+Examples:
+- "Doanh thu tháng 3": SELECT * FROM v_monthly_revenue WHERE month = '2025-03'
+- "Top 5 sản phẩm": SELECT * FROM v_product_performance ORDER BY total_revenue DESC LIMIT 5
+- "Doanh thu theo khu vực": SELECT * FROM v_customer_segment_revenue
+
+If the question is not about data, return: SELECT 'I can only answer data-related questions'"""
+
 # Predict keywords (both with and without Vietnamese diacritics)
 PREDICT_KEYWORDS = [
     "dự đoán", "du doan", "forecast", "predict", "xu hướng tương lai",
     "dự báo", "du bao", "prediction", "tương lai", "tuong lai",
     "next month", "tháng tới", "thang toi", "quý tới", "quy toi",
     "năm tới", "nam toi", "sắp tới", "sap toi",
+]
+
+# Dashboard keywords
+DASHBOARD_KEYWORDS = [
+    "tạo dashboard", "tao dashboard", "dashboard tổng quan", "dashboard tong quan",
+    "build dashboard", "create dashboard", "make dashboard",
+    "dashboard theo dõi", "dashboard theo doi",
+    "bảng điều khiển", "bang dieu khien",
+    "tổng quan dashboard", "tong quan dashboard",
+    "dashboard doanh thu", "dashboard don hang",
+    "dashboard đơn hàng",
+]
+
+# Pre-defined dashboard queries for multi-chart generation
+DASHBOARD_QUERIES = [
+    {
+        "name": "monthly_revenue",
+        "title": "Doanh thu theo tháng",
+        "sql": "SELECT * FROM v_monthly_revenue ORDER BY month",
+        "chart_hint": "line chart showing revenue trend over months",
+    },
+    {
+        "name": "daily_revenue",
+        "title": "Doanh thu hàng ngày (30 ngày gần nhất)",
+        "sql": "SELECT * FROM v_daily_revenue ORDER BY order_date DESC LIMIT 30",
+        "chart_hint": "area chart showing daily revenue",
+    },
+    {
+        "name": "top_products",
+        "title": "Top 10 sản phẩm bán chạy",
+        "sql": "SELECT * FROM v_product_performance ORDER BY total_revenue DESC LIMIT 10",
+        "chart_hint": "horizontal bar chart showing top products by revenue",
+    },
+    {
+        "name": "customer_segments",
+        "title": "Doanh thu theo phân khúc khách hàng",
+        "sql": "SELECT * FROM v_customer_segment_revenue",
+        "chart_hint": "pie chart showing revenue by customer segment",
+    },
 ]
 
 
@@ -89,6 +158,173 @@ def _is_predict_request(message: str) -> bool:
     """Check if user message is asking for prediction/forecast."""
     msg_lower = message.lower()
     return any(kw in msg_lower for kw in PREDICT_KEYWORDS)
+
+
+def _is_dashboard_request(message: str) -> bool:
+    """Check if user message is asking for a dashboard."""
+    msg_lower = message.lower()
+    return any(kw in msg_lower for kw in DASHBOARD_KEYWORDS)
+
+
+def _build_fallback_chart(dq: dict, data: list) -> dict:
+    """Build a fallback chart config when LLM-based chart generation fails."""
+    if not data:
+        return None
+
+    keys = list(data[0].keys())
+    numeric_keys = [k for k in keys if isinstance(data[0].get(k), (int, float))]
+    text_keys = [k for k in keys if not isinstance(data[0].get(k), (int, float))]
+
+    # Determine chart type from hint
+    hint = dq.get("chart_hint", "").lower()
+    if "pie" in hint:
+        chart_type = "pie"
+    elif "area" in hint:
+        chart_type = "area"
+    elif "line" in hint:
+        chart_type = "line"
+    else:
+        chart_type = "bar"
+
+    x_key = text_keys[0] if text_keys else keys[0]
+    colors = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899"]
+    series = []
+    for i, nk in enumerate(numeric_keys[:3]):
+        series.append({
+            "dataKey": nk,
+            "name": nk.replace("_", " ").title(),
+            "color": colors[i % len(colors)],
+        })
+
+    config = {
+        "chart_type": chart_type,
+        "title": dq["title"],
+        "description": f"Phân tích theo {x_key}",
+        "config": {
+            "xAxis": {"dataKey": x_key, "label": x_key.replace("_", " ").title()},
+            "yAxis": {"label": numeric_keys[0].replace("_", " ").title() if numeric_keys else ""},
+            "series": series,
+        },
+        "data": data[:100],
+        "dashboard_panel": dq["name"],
+    }
+
+    # For pie charts, add nameKey and dataKey at config level
+    if chart_type == "pie" and text_keys and numeric_keys:
+        config["config"]["nameKey"] = text_keys[0]
+        config["config"]["dataKey"] = numeric_keys[0]
+
+    return config
+
+
+async def _process_dashboard(
+    message: str,
+    user_id: str
+) -> AsyncGenerator[str, None]:
+    """
+    Xử lý yêu cầu tạo dashboard: Chạy nhiều queries và trả về multi-chart.
+    Includes fallback chart generation when LLM fails.
+    """
+    yield await _stream_sse_event("status", {"message": "Đang tạo dashboard tổng quan..."})
+
+    try:
+        all_charts = []
+        all_sqls = []
+        failed_panels = []
+
+        for i, dq in enumerate(DASHBOARD_QUERIES):
+            yield await _stream_sse_event("status", {
+                "message": f"Đang truy vấn: {dq['title']} ({i+1}/{len(DASHBOARD_QUERIES)})..."
+            })
+
+            # Execute query
+            try:
+                data = await execute_safe_query(dq["sql"])
+            except Exception as e:
+                logger.warning(f"Dashboard query failed for {dq['name']}: {e}")
+                failed_panels.append({"name": dq["name"], "title": dq["title"], "error": str(e)})
+                continue
+
+            if not data:
+                logger.info(f"Dashboard query returned empty for {dq['name']}")
+                continue
+
+            all_sqls.append({"name": dq["name"], "sql": dq["sql"]})
+
+            # Generate chart config (with fallback)
+            yield await _stream_sse_event("status", {
+                "message": f"Đang tạo biểu đồ: {dq['title']}..."
+            })
+
+            try:
+                chart_config = await generate_chart_config(data, dq["chart_hint"])
+                chart_config["title"] = dq["title"]
+                chart_config["dashboard_panel"] = dq["name"]
+                chart_config["data"] = data[:100]
+                all_charts.append(chart_config)
+            except Exception as e:
+                logger.warning(f"LLM chart generation failed for {dq['name']}: {e}, using fallback")
+                # Fallback: build chart config without LLM
+                fallback = _build_fallback_chart(dq, data)
+                if fallback:
+                    all_charts.append(fallback)
+
+        # Emit all SQL queries used
+        yield await _stream_sse_event("sql_generated", {
+            "sql": "\n\n".join([f"-- {s['name']}\n{s['sql']}" for s in all_sqls]),
+            "tool_used": "dashboard_builder",
+            "queries": all_sqls,
+        })
+
+        # Emit data summary
+        yield await _stream_sse_event("data_ready", {
+            "row_count": sum(len(c.get("data", [])) for c in all_charts),
+            "panel_count": len(all_charts),
+            "preview": [{"panel": c.get("dashboard_panel"), "title": c.get("title")} for c in all_charts],
+        })
+
+        # Emit each chart as a separate event
+        for chart in all_charts:
+            yield await _stream_sse_event("chart", chart)
+
+        # Generate overall insight
+        yield await _stream_sse_event("status", {"message": "Đang phân tích insight tổng quan..."})
+        try:
+            summary_parts = []
+            for chart in all_charts:
+                chart_data = chart.get("data", [])
+                if chart_data:
+                    summary_parts.append(f"{chart.get('title', '')}: {len(chart_data)} records")
+
+            insight = await generate_insight_summary(
+                [{"dashboard_panels": len(all_charts), "summaries": summary_parts}],
+                f"Tổng quan dashboard: {message}"
+            )
+        except Exception:
+            insight = f"Dashboard tổng quan với {len(all_charts)} biểu đồ đã được tạo thành công."
+
+        # Add failed panels info to insight if any
+        if failed_panels:
+            failed_info = ", ".join([p["title"] for p in failed_panels])
+            insight += f"\n\nLưu ý: Một số panel không thể tải dữ liệu ({failed_info}). Vui lòng kiểm tra kết nối database."
+
+        yield await _stream_sse_event("insight", {"text": insight})
+
+        # Build completion message
+        if all_charts:
+            complete_msg = f"Dashboard hoàn thành! {len(all_charts)} biểu đồ đã được tạo."
+        else:
+            complete_msg = "Không thể tạo dashboard do không truy vấn được dữ liệu. Vui lòng kiểm tra kết nối database."
+
+        yield await _stream_sse_event("complete", {
+            "message": complete_msg,
+            "tool_used": "dashboard_builder",
+            "panel_count": len(all_charts),
+        })
+
+    except Exception as e:
+        logger.error(f"Dashboard processing error: {e}", exc_info=True)
+        yield await _stream_sse_event("error", {"message": f"Lỗi tạo dashboard: {str(e)}"})
 
 
 async def _process_predict(
@@ -256,7 +492,6 @@ async def _process_with_dify(
                                 yield await _stream_sse_event("agent_thought", {
                                     "thought": data.get("thought", ""),
                                     "tool": data.get("tool", ""),
-                                    "tool_input": data.get("tool_input", ""),
                                 })
 
                         except json.JSONDecodeError:
@@ -296,34 +531,7 @@ async def _process_direct(
             messages=[
                 {
                     "role": "system",
-                    "content": f"""{READ_ONLY_GUARDRAIL}
-
-You are a SQL expert for a sales analytics database on PostgreSQL (Supabase PostgREST).
-
-CRITICAL RULES:
-1. NEVER use schema prefix (no "analytics_mart."). Use plain table/view names.
-2. NEVER use column aliases (no AS). PostgREST does not support them.
-3. NEVER use aggregate functions (SUM, COUNT, AVG, GROUP BY). Use pre-computed views.
-4. ALWAYS prefer views over raw tables. Views already have aggregated data.
-5. Return ONLY raw SQL. No markdown code blocks, no explanation.
-
-Tables:
-- fact_sales: sale_id(int), order_date(date), product_id(int), customer_id(int), quantity(int), unit_price(numeric), total_amount(numeric), discount(numeric), channel(text), payment_method(text)
-- dim_products: product_id(int), product_name(text), category(text), sub_category(text), brand(text), unit_price(numeric)
-- dim_customers: customer_id(int), customer_name(text), email(text), segment(text: 'Premium'|'Standard'|'Basic'), region(text), city(text), country(text)
-
-Views (pre-aggregated, use these first):
-- v_daily_revenue: order_date(date), total_orders(int), total_quantity(int), total_revenue(numeric), avg_order_value(numeric)
-- v_monthly_revenue: month(text, format 'YYYY-MM' e.g. '2025-03'), total_orders(int), total_revenue(numeric), avg_order_value(numeric)
-- v_product_performance: product_id(int), product_name(text), category(text), total_orders(int), total_quantity(int), total_revenue(numeric)
-- v_customer_segment_revenue: segment(text), region(text), total_customers(int), total_orders(int), total_revenue(numeric)
-
-Examples:
-- "Doanh thu tháng 3": SELECT * FROM v_monthly_revenue WHERE month = '2025-03'
-- "Top 5 sản phẩm": SELECT * FROM v_product_performance ORDER BY total_revenue DESC LIMIT 5
-- "Doanh thu theo khu vực": SELECT * FROM v_customer_segment_revenue
-
-If the question is not about data, return: SELECT 'I can only answer data-related questions'"""
+                    "content": SQL_SYSTEM_PROMPT.format(guardrail=READ_ONLY_GUARDRAIL)
                 },
                 {"role": "user", "content": message}
             ],
@@ -393,9 +601,12 @@ async def chat_stream(request: ChatRequest):
             "user_message": request.message,
         })
 
-        # Route to predict or query based on intent
+        # Route to predict, dashboard, or query based on intent
         if _is_predict_request(request.message):
             async for event in _process_predict(request.message, request.user_id):
+                yield event
+        elif _is_dashboard_request(request.message):
+            async for event in _process_dashboard(request.message, request.user_id):
                 yield event
         else:
             async for event in _process_with_dify(
@@ -446,19 +657,32 @@ async def chat_query(request: ChatRequest):
                 "insight": insight,
             }
 
+        # Check if dashboard request
+        if _is_dashboard_request(request.message):
+            results = []
+            for dq in DASHBOARD_QUERIES:
+                try:
+                    data = await execute_safe_query(dq["sql"])
+                    chart = await generate_chart_config(data, dq["chart_hint"])
+                    chart["title"] = dq["title"]
+                    chart["data"] = data[:100]
+                    results.append(chart)
+                except Exception as e:
+                    logger.warning(f"Dashboard query failed: {e}")
+
+            return {
+                "success": True,
+                "tool_used": "dashboard_builder",
+                "panel_count": len(results),
+                "charts": results,
+            }
+
         # Regular SQL query
         sql = await chat_completion(
             messages=[
                 {
                     "role": "system",
-                    "content": f"""{READ_ONLY_GUARDRAIL}
-
-You are a SQL expert for PostgreSQL (Supabase PostgREST).
-NEVER use schema prefix. NEVER use AS aliases. NEVER use aggregate functions.
-Use pre-computed views: v_daily_revenue, v_monthly_revenue, v_product_performance, v_customer_segment_revenue.
-Tables: fact_sales, dim_products, dim_customers.
-v_monthly_revenue.month is text format 'YYYY-MM'. v_product_performance has: total_orders, total_quantity, total_revenue.
-Return ONLY raw SQL."""
+                    "content": SQL_SYSTEM_PROMPT.format(guardrail=READ_ONLY_GUARDRAIL)
                 },
                 {"role": "user", "content": request.message}
             ],

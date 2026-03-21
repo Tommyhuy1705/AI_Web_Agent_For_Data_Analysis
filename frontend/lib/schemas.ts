@@ -16,6 +16,7 @@ export const chartConfigSchema = z.object({
   chart_type: z.string().min(1),
   title: z.string().min(1),
   description: z.string().optional(),
+  dashboard_panel: z.string().optional(),
   config: z
     .object({
       xAxis: chartAxisSchema.optional(),

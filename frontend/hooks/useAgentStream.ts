@@ -2,6 +2,7 @@
  * useAgentStream Hook
  * Xử lý kết nối SSE (Server-Sent Events) từ FastAPI Backend.
  * Quản lý luồng streaming cho chat và alarm notifications.
+ * Hỗ trợ multi-chart cho dashboard mode.
  */
 
 "use client";
@@ -135,9 +136,11 @@ export function useAgentStream(): UseAgentStreamReturn {
       try {
         let fullContent = "";
         let chartConfig: ChartConfig | null = null;
+        let allCharts: ChartConfig[] = [];
         let insight = "";
         let sql = "";
         let hasStreamedData = false;
+        let isDashboard = false;
 
         // Helper to process each SSE event
         const processSSEEvent = (event: string, data: any) => {
@@ -152,11 +155,23 @@ export function useAgentStream(): UseAgentStreamReturn {
 
             case "sql_generated":
               sql = data.sql || "";
+              if (data.tool_used === "dashboard_builder") {
+                isDashboard = true;
+              }
               setStatusMessage("SQL đã được sinh...");
               break;
 
             case "data_ready":
-              setStatusMessage(`Đã truy vấn ${data.row_count || 0} dòng dữ liệu`);
+              {
+                const rowCount = data.row_count || 0;
+                const panelCount = data.panel_count;
+                if (panelCount) {
+                  isDashboard = true;
+                  setStatusMessage(`Dashboard: ${panelCount} biểu đồ, ${rowCount} dòng dữ liệu`);
+                } else {
+                  setStatusMessage(`Đã truy vấn ${rowCount} dòng dữ liệu`);
+                }
+              }
               break;
 
             case "message_chunk":
@@ -185,11 +200,27 @@ export function useAgentStream(): UseAgentStreamReturn {
               {
                 const parsedChart = chartConfigSchema.safeParse(data);
                 if (parsedChart.success) {
-                  chartConfig = parsedChart.data as ChartConfig;
-                  setActiveChart(chartConfig);
-                  updateLastAssistantMessage(fullContent, { chartConfig });
+                  const chart = parsedChart.data as ChartConfig;
+                  
+                  if (isDashboard) {
+                    // Dashboard mode: collect all charts
+                    allCharts.push(chart);
+                    setActiveChart(chart);
+                    // Update metadata with all charts so far
+                    updateLastAssistantMessage(fullContent, {
+                      chartConfig: allCharts.length === 1 ? chart : allCharts[0],
+                      allCharts: [...allCharts],
+                      isDashboard: true,
+                      panelCount: allCharts.length,
+                    });
+                  } else {
+                    // Single chart mode
+                    chartConfig = chart;
+                    setActiveChart(chartConfig);
+                    updateLastAssistantMessage(fullContent, { chartConfig });
+                  }
                 } else {
-                  setStatusMessage("Dang xu ly bieu do...");
+                  setStatusMessage("Đang xử lý biểu đồ...");
                 }
               }
               break;
@@ -203,12 +234,23 @@ export function useAgentStream(): UseAgentStreamReturn {
               break;
 
             case "complete":
-              updateLastAssistantMessage(fullContent || data.message || "Hoàn thành!", {
-                sql,
-                rowCount: data.row_count,
-                chartConfig,
-                insight,
-              });
+              {
+                const meta: any = {
+                  sql,
+                  rowCount: data.row_count,
+                  chartConfig: isDashboard ? (allCharts[0] || null) : chartConfig,
+                  insight,
+                };
+                if (isDashboard) {
+                  meta.allCharts = allCharts;
+                  meta.isDashboard = true;
+                  meta.panelCount = data.panel_count || allCharts.length;
+                }
+                updateLastAssistantMessage(
+                  fullContent || data.message || "Hoàn thành!",
+                  meta
+                );
+              }
               break;
 
             case "error":

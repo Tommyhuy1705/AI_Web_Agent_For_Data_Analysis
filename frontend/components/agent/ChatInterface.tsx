@@ -1,7 +1,7 @@
 /**
  * ChatInterface Component
  * Giao diện chat tương tác với AI Agent.
- * Hiển thị messages, status, và input.
+ * Hiển thị messages, status, SQL code (collapsible), và input.
  */
 
 "use client";
@@ -22,9 +22,14 @@ import {
   BarChart3,
   Copy,
   Check,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+/* ------------------------------------------------------------------ */
+/*  Markdown renderer with code-block copy                            */
+/* ------------------------------------------------------------------ */
 function MarkdownMessage({ content }: { content: string }) {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
@@ -80,6 +85,27 @@ function MarkdownMessage({ content }: { content: string }) {
         ol({ children }) {
           return <ol className="list-decimal pl-5 mb-2">{children}</ol>;
         },
+        table({ children }) {
+          return (
+            <div className="overflow-x-auto my-2">
+              <table className="min-w-full text-xs border-collapse border border-gray-300">
+                {children}
+              </table>
+            </div>
+          );
+        },
+        th({ children }) {
+          return (
+            <th className="border border-gray-300 bg-gray-100 px-2 py-1 text-left font-semibold">
+              {children}
+            </th>
+          );
+        },
+        td({ children }) {
+          return (
+            <td className="border border-gray-300 px-2 py-1">{children}</td>
+          );
+        },
       }}
     >
       {content}
@@ -87,6 +113,61 @@ function MarkdownMessage({ content }: { content: string }) {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  Collapsible SQL Viewer                                            */
+/* ------------------------------------------------------------------ */
+function SQLViewer({ sql }: { sql: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    await navigator.clipboard.writeText(sql);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition-colors font-medium cursor-pointer"
+      >
+        <Database className="w-3 h-3" />
+        SQL
+        {expanded ? (
+          <ChevronDown className="w-3 h-3" />
+        ) : (
+          <ChevronRight className="w-3 h-3" />
+        )}
+      </button>
+
+      {expanded && (
+        <div className="mt-1.5 relative rounded-md overflow-hidden border border-blue-200 bg-slate-900 text-green-300">
+          <div className="flex items-center justify-between px-3 py-1 text-[10px] bg-slate-800 border-b border-slate-700">
+            <span className="text-slate-400 uppercase tracking-wide">SQL Query</span>
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-slate-300 text-[10px] cursor-pointer"
+            >
+              {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+          <pre className="p-3 overflow-x-auto text-[11px] leading-relaxed font-mono whitespace-pre-wrap">
+            {sql}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main ChatInterface                                                */
+/* ------------------------------------------------------------------ */
 export default function ChatInterface() {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -131,7 +212,7 @@ export default function ChatInterface() {
     "Tổng doanh thu tháng này là bao nhiêu?",
     "Top 5 sản phẩm bán chạy nhất?",
     "Phân tích doanh thu theo khu vực",
-    "So sánh doanh thu online vs offline",
+    "Tạo dashboard theo dõi đơn hàng và doanh thu",
   ];
 
   return (
@@ -205,7 +286,7 @@ export default function ChatInterface() {
 
               <div
                 className={cn(
-                  "max-w-[80%] rounded-lg px-4 py-2.5 text-sm",
+                  "max-w-[85%] rounded-lg px-4 py-2.5 text-sm",
                   msg.role === "user"
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted"
@@ -226,26 +307,33 @@ export default function ChatInterface() {
                   )}
                 </div>
 
-                {/* Metadata badges */}
+                {/* Metadata section: SQL viewer + badges */}
                 {msg.metadata && msg.role === "assistant" && (
-                  <div className="flex flex-wrap gap-1.5 mt-2">
+                  <div className="mt-2 space-y-1.5">
+                    {/* Clickable SQL viewer */}
                     {msg.metadata.sql && (
-                      <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
-                        <Database className="w-3 h-3" />
-                        SQL
-                      </span>
+                      <SQLViewer sql={msg.metadata.sql} />
                     )}
-                    {msg.metadata.chartConfig && (
-                      <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">
-                        <BarChart3 className="w-3 h-3" />
-                        Biểu đồ
-                      </span>
-                    )}
-                    {msg.metadata.rowCount !== undefined && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                        {msg.metadata.rowCount} dòng
-                      </span>
-                    )}
+
+                    {/* Other badges */}
+                    <div className="flex flex-wrap gap-1.5">
+                      {msg.metadata.isDashboard && msg.metadata.panelCount ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                          <BarChart3 className="w-3 h-3" />
+                          Dashboard: {msg.metadata.panelCount} biểu đồ
+                        </span>
+                      ) : msg.metadata.chartConfig ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                          <BarChart3 className="w-3 h-3" />
+                          Biểu đồ
+                        </span>
+                      ) : null}
+                      {msg.metadata.rowCount !== undefined && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                          {msg.metadata.rowCount} dòng
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -278,7 +366,7 @@ export default function ChatInterface() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="💬 Nhập câu hỏi về doanh thu tại đây..."
+            placeholder="Nhập câu hỏi về doanh thu tại đây..."
             rows={2}
             className="flex-1 resize-none rounded-xl border-2 border-primary/20 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/40 bg-muted/30 min-h-[52px] max-h-[120px] placeholder:text-muted-foreground/60"
             disabled={isLoading}

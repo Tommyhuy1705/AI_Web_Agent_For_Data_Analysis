@@ -1,21 +1,22 @@
 /**
  * Main Page - Omni-Revenue Agent
  * UI chia 2 cột: Chat (trái) & Canvas/Dashboard (phải)
+ * Hỗ trợ hiển thị multi-chart grid khi user yêu cầu tạo dashboard.
  */
 
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import ChatInterface from "@/components/agent/ChatInterface";
 import DynamicChart from "@/components/visualizations/DynamicChart";
-import { useAgentStore } from "@/store/useAgentStore";
+import { useAgentStore, type ChartConfig } from "@/store/useAgentStore";
 import { useAgentStream } from "@/hooks/useAgentStream";
 import { Bell, Activity, TrendingUp, LayoutDashboard } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 export default function Home() {
-  const { alarms, unreadAlarmCount, activeChart, markAlarmRead } =
+  const { alarms, unreadAlarmCount, activeChart, messages, markAlarmRead } =
     useAgentStore();
   const { subscribeAlarms, unsubscribeAlarms } = useAgentStream();
 
@@ -24,6 +25,14 @@ export default function Home() {
     subscribeAlarms();
     return () => unsubscribeAlarms();
   }, []);
+
+  // Check if the latest assistant message is a dashboard (multi-chart)
+  const dashboardCharts = useMemo(() => {
+    const lastAssistant = [...messages].reverse().find(
+      (m) => m.role === "assistant" && m.metadata?.isDashboard && m.metadata?.allCharts?.length
+    );
+    return lastAssistant?.metadata?.allCharts || null;
+  }, [messages]);
 
   return (
     <div className="flex flex-col h-full bg-background overflow-hidden">
@@ -77,8 +86,34 @@ export default function Home() {
         {/* Right Column: Canvas / Dashboard */}
         <div className="flex-1 flex flex-col min-w-0">
           {/* Canvas Area */}
-          <div className="flex-1 min-h-0">
-            <DynamicChart />
+          <div className="flex-1 min-h-0 overflow-auto">
+            {dashboardCharts && dashboardCharts.length >= 1 ? (
+              /* Multi-chart Dashboard Grid */
+              <div className="p-4">
+                <div className="flex items-center gap-2 mb-4">
+                  <LayoutDashboard className="w-4 h-4 text-primary" />
+                  <h2 className="text-sm font-semibold">Dashboard tùy chỉnh</h2>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                    {dashboardCharts.length} biểu đồ
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {dashboardCharts.map((chart: ChartConfig, idx: number) => (
+                    <div
+                      key={idx}
+                      className="border rounded-lg bg-card shadow-sm overflow-hidden"
+                    >
+                      <div className="h-[320px]">
+                        <DynamicChart config={chart} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              /* Single Chart View */
+              <DynamicChart />
+            )}
           </div>
 
           {/* Alarm Bar (if any) */}
