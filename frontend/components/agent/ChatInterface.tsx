@@ -5,14 +5,15 @@ import {
   Send, Bot, User, Sparkles, Loader2, BarChart2, CheckCircle2,
   MessageSquareText, Search, Database, ChevronDown, ChevronRight,
   Check, Copy, History, PlusCircle, MessageSquare, Trash2, X, Clock,
-  Mic, MicOff, Volume2, VolumeX,
+  Mic, MicOff, Volume2, VolumeX, AlertCircle,
 } from "lucide-react";
 import { useAgentStore, ChatSession, ChatMessage as ChatMessageType } from "@/store/useAgentStore";
 import { useAgentStream } from "@/hooks/useAgentStream";
 import ReactMarkdown from "react-markdown";
 import { cn } from "@/lib/utils";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// FIX: Use NEXT_PUBLIC_BACKEND_URL (consistent with the rest of the app)
+const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
 // Format timestamps
 const formatTime = (date?: Date) => {
@@ -78,7 +79,6 @@ function AudioBriefingButton({ text }: { text: string }) {
 
   const handlePlay = async () => {
     if (isPlaying) {
-      // Stop playback
       audioRef.current?.pause();
       if (audioRef.current) {
         audioRef.current.currentTime = 0;
@@ -92,7 +92,7 @@ function AudioBriefingButton({ text }: { text: string }) {
       const response = await fetch(`${API_BASE}/api/audio/briefing`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: text.slice(0, 2000) }), // Giới hạn 2000 ký tự
+        body: JSON.stringify({ text: text.slice(0, 2000) }),
       });
 
       if (!response.ok) {
@@ -105,7 +105,6 @@ function AudioBriefingButton({ text }: { text: string }) {
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
 
-      // Dọn dẹp audio cũ
       if (audioRef.current) {
         audioRef.current.pause();
         URL.revokeObjectURL(audioRef.current.src);
@@ -130,7 +129,6 @@ function AudioBriefingButton({ text }: { text: string }) {
     }
   };
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       audioRef.current?.pause();
@@ -317,59 +315,119 @@ function ChatHistorySidebar({
 
 // ------------------------------------------------------------------ //
 //  Voice Input Hook (Web Speech API)                                  //
+//  FIX: Stable recognition ref, permission check, HTTPS warning      //
 // ------------------------------------------------------------------ //
 function useVoiceInput(onTranscript: (text: string) => void) {
   const [isListening, setIsListening] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
+  const [permissionError, setPermissionError] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
-
+  // FIX: Use a stable ref for the callback to avoid recreating recognition on every render
+  const onTranscriptRef = useRef(onTranscript);
   useEffect(() => {
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      setIsSupported(true);
-      const recognition = new SpeechRecognition();
-      recognition.lang = "vi-VN";
-      recognition.continuous = false;
-      recognition.interimResults = false;
-      recognition.maxAlternatives = 1;
-
-      recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        onTranscript(transcript);
-        setIsListening(false);
-      };
-
-      recognition.onerror = (event: any) => {
-        console.error("Speech recognition error:", event.error);
-        setIsListening(false);
-      };
-
-      recognition.onend = () => {
-        setIsListening(false);
-      };
-
-      recognitionRef.current = recognition;
-    }
+    onTranscriptRef.current = onTranscript;
   }, [onTranscript]);
 
-  const startListening = useCallback(() => {
-    if (!recognitionRef.current || isListening) return;
-    try {
-      recognitionRef.current.start();
-      setIsListening(true);
-    } catch (e) {
-      console.error("Failed to start recognition:", e);
+  // FIX: Initialize recognition ONCE on mount (empty deps), use ref for callback
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      // Not supported (Firefox without flag, some mobile browsers)
+      setIsSupported(false);
+      return;
     }
+
+    setIsSupported(true);
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = "vi-VN";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      onTranscriptRef.current(transcript);
+      setIsListening(false);
+      setPermissionError(null);
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error("Speech recognition error:", event.error);
+      setIsListening(false);
+
+      // Map error codes to user-friendly Vietnamese messages
+      const errorMessages: Record<string, string> = {
+        "not-allowed": "Trình duyệt chưa được cấp quyền microphone. Vui lòng cho phép trong cài đặt trình duyệt.",
+        "no-speech": "Không nhận được giọng nói. Hãy thử lại.",
+        "audio-capture": "Không tìm thấy microphone. Kiểm tra kết nối thiết bị.",
+        "network": "Lỗi mạng khi nhận dạng giọng nói. Kiểm tra kết nối internet.",
+        "service-not-allowed": "Tính năng giọng nói yêu cầu HTTPS hoặc localhost.",
+        "aborted": null, // User stopped — no error needed
+      } as any;
+
+      const msg = errorMessages[event.error];
+      if (msg !== null && msg !== undefined) {
+        setPermissionError(msg);
+        // Auto-clear error after 5 seconds
+        setTimeout(() => setPermissionError(null), 5000);
+      }
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+
+    return () => {
+      // Cleanup on unmount
+      try {
+        recognition.abort();
+      } catch (_) {}
+    };
+  }, []); // Empty deps — initialize once
+
+  const startListening = useCallback(() => {
+    if (!recognitionRef.current) return;
+    if (isListening) return;
+
+    setPermissionError(null);
+
+    // FIX: Abort any previous session before starting new one
+    try {
+      recognitionRef.current.abort();
+    } catch (_) {}
+
+    // Small delay to ensure abort completes
+    setTimeout(() => {
+      try {
+        recognitionRef.current.start();
+        setIsListening(true);
+      } catch (e: any) {
+        console.error("Failed to start recognition:", e);
+        if (e?.message?.includes("already started")) {
+          // Already running — stop it
+          recognitionRef.current.stop();
+          setIsListening(false);
+        }
+      }
+    }, 100);
   }, [isListening]);
 
   const stopListening = useCallback(() => {
     if (!recognitionRef.current || !isListening) return;
-    recognitionRef.current.stop();
+    try {
+      recognitionRef.current.stop();
+    } catch (_) {}
     setIsListening(false);
   }, [isListening]);
 
-  return { isListening, isSupported, startListening, stopListening };
+  return { isListening, isSupported, permissionError, startListening, stopListening };
 }
 
 // ------------------------------------------------------------------ //
@@ -389,7 +447,8 @@ export default function ChatInterface() {
   const handleTranscript = useCallback((text: string) => {
     setInput((prev) => (prev ? `${prev} ${text}` : text));
   }, []);
-  const { isListening, isSupported, startListening, stopListening } = useVoiceInput(handleTranscript);
+  const { isListening, isSupported, permissionError, startListening, stopListening } =
+    useVoiceInput(handleTranscript);
 
   // Scroll to bottom on new message
   useEffect(() => {
@@ -611,6 +670,14 @@ export default function ChatInterface() {
 
       {/* Input Area */}
       <div className="flex-shrink-0 p-4 border-t border-slate-100 dark:border-slate-800/80 bg-white/80 dark:bg-[#111827]/80 backdrop-blur-md">
+        {/* Permission / error banner for voice */}
+        {permissionError && (
+          <div className="flex items-center gap-2 mb-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-xs max-w-2xl mx-auto">
+            <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>{permissionError}</span>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="flex items-center gap-2 relative max-w-2xl mx-auto w-full">
           <div className="relative flex-1 group">
             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -629,13 +696,14 @@ export default function ChatInterface() {
               )}
             />
 
-            {/* 🎤 Microphone Button */}
+            {/* 🎤 Microphone Button — shown if supported */}
             {isSupported && (
               <button
                 type="button"
                 onClick={handleMicClick}
                 disabled={isTyping}
-                title={isListening ? "Dừng ghi âm" : "Ghi âm giọng nói"}
+                title={isListening ? "Dừng ghi âm" : "Ghi âm giọng nói (vi-VN)"}
+                aria-label={isListening ? "Dừng ghi âm" : "Bắt đầu ghi âm"}
                 className={cn(
                   "absolute right-12 top-1.5 bottom-1.5 w-[36px] rounded-full flex items-center justify-center transition-all disabled:opacity-40",
                   isListening
@@ -661,13 +729,13 @@ export default function ChatInterface() {
         {/* Voice status indicator */}
         {isListening && (
           <div className="flex items-center justify-center gap-2 mt-2">
-            <span className="flex gap-0.5">
+            <span className="flex gap-0.5 items-end h-5">
               {[0, 1, 2, 3, 4].map((i) => (
                 <span
                   key={i}
                   className="w-0.5 bg-red-500 rounded-full animate-bounce"
                   style={{
-                    height: `${8 + Math.random() * 12}px`,
+                    height: `${8 + (i % 3) * 4}px`,
                     animationDelay: `${i * 0.1}s`,
                   }}
                 />
