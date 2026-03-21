@@ -196,3 +196,62 @@
 | `05b5995` | `test(alarm): validate alarm trigger at -66.67% revenue drop, SendGrid email HTTP 202 confirmed` |
 | `ba29977` | `feat(tinyfish): configure TINYFISH_API_KEY and test SSE crawler on Tiki.vn - 5 competitor products crawled` |
 | `5826ea1` | `fix(upsert): document upsert_via_rest 409 conflict bug - use PATCH for hourly_snapshot update to avoid unique constraint violation` |
+
+---
+
+## Phase 7: Tối ưu hóa AI Agent — 4 Tính năng Mới (2026-03-21)
+
+### Task 1: Database Schema — Chat History & Dashboard Cache
+- [ ] Tạo bảng `chat_sessions` (id UUID, user_id, title, created_at, updated_at, is_active)
+- [ ] Tạo bảng `chat_messages` (id UUID, session_id FK, role, content, metadata JSONB, created_at)
+- [ ] Tạo bảng `dashboard_cache` (cache_key, data JSONB, cached_at, expires_at)
+- [ ] Thêm indexes tối ưu cho chat_messages (session_id, created_at)
+- [ ] Cập nhật `database/supabase_schema.sql`
+- [ ] Chạy migration lên Supabase
+
+**Commit:** `setup(db): init chat_sessions, chat_messages, dashboard_cache schema`
+
+### Task 2: Backend — Scheduled Dashboard (07:00, 10:00, 13:00, 16:00)
+- [ ] Tạo `backend/services/dashboard_cache_service.py`
+- [ ] Thêm 4 cronjob trong `main.py` (07:00, 10:00, 13:00, 16:00 Asia/Ho_Chi_Minh)
+- [ ] Cập nhật `dashboard_router.py` — serve từ cache, rebuild nếu hết hạn
+- [ ] Thêm endpoint `GET /api/dashboard/cache-status`
+
+**Commit:** `feat(backend): scheduled dashboard cache at 07/10/13/16h daily`
+
+### Task 3: Backend — Smart Alarm (08:00 sáng)
+- [ ] Refactor `alarm_monitor.py` — logic 08:00 sáng thay vì hourly
+- [ ] Hàm `_get_revenue_window(from_time, to_time)` — doanh thu 18:00 hôm trước → 08:00 hôm nay
+- [ ] Chỉ trigger alarm khi biến động vượt ngưỡng (dương hoặc âm)
+- [ ] Không cảnh báo nếu không có biến động
+- [ ] Cập nhật cronjob từ hourly → daily 08:00
+
+**Commit:** `feat(backend): smart alarm at 08:00 with overnight revenue window check`
+
+### Task 4: Backend — Chat History & Context Memory API
+- [ ] Tạo `backend/services/chat_history_service.py`
+- [ ] Endpoint `POST /api/chat/sessions` — tạo session mới
+- [ ] Endpoint `GET /api/chat/sessions` — danh sách sessions
+- [ ] Endpoint `GET /api/chat/sessions/{session_id}/messages` — lịch sử messages
+- [ ] Endpoint `DELETE /api/chat/sessions/{session_id}` — xóa session
+- [ ] Cập nhật `chat_router.py` — lưu messages, truyền history vào LLM/Dify
+
+**Commit:** `feat(backend): chat history API and context memory for LLM`
+
+### Task 5: Frontend — New Chat Workspace UI/UX
+- [ ] Cập nhật `useAgentStore.ts` — thêm `sessionId`, `startNewSession()` action
+- [ ] Cập nhật `ChatInterface.tsx` — thêm nút "New Chat" với icon + styling
+- [ ] Click "New Chat": gọi API tạo session mới, reset messages, reset charts
+- [ ] Hiển thị session title trong header
+
+**Commit:** `feat(frontend): new chat workspace button with session management`
+
+### Task 6: System Testing
+- [ ] Test backend startup với schema mới
+- [ ] Test scheduled dashboard cache
+- [ ] Test smart alarm logic (simulate overnight data)
+- [ ] Test chat session creation và message persistence
+- [ ] Test context memory qua nhiều lượt chat
+- [ ] Test New Chat button
+
+**Commit:** `test(system): e2e validation of phase 7 features`
