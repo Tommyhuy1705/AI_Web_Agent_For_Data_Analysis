@@ -167,12 +167,12 @@ jobs:
               fi
               HAS_STANDARD_CHARS=false
               HAS_URLSAFE_CHARS=false
-              if printf '%s' "$BACKEND_ENV_CLEAN" | grep -Eq '[+/]'; then
-                HAS_STANDARD_CHARS=true
-              fi
-              if printf '%s' "$BACKEND_ENV_CLEAN" | grep -Eq '[_-]'; then
-                HAS_URLSAFE_CHARS=true
-              fi
+              case "$BACKEND_ENV_CLEAN" in
+                *[+/]* ) HAS_STANDARD_CHARS=true ;;
+              esac
+              case "$BACKEND_ENV_CLEAN" in
+                *[_-]* ) HAS_URLSAFE_CHARS=true ;;
+              esac
               if [ "$HAS_STANDARD_CHARS" = true ] && [ "$HAS_URLSAFE_CHARS" = true ]; then
                 echo "❌ BACKEND_ENV_BASE64 mixes standard (+/) and URL-safe (-_) characters." >&2
                 exit 1
@@ -219,8 +219,7 @@ jobs:
               if [ -f "$BACKEND_ENV_TEMPLATE" ]; then
                 cp "$BACKEND_ENV_TEMPLATE" "$BACKEND_ENV_FILE"
                 chmod 600 "$BACKEND_ENV_FILE"
-                echo "ℹ️ Template copied to /opt/sia/.env.backend to help you fill in values."
-                echo "❌ Production deploys require the BACKEND_ENV_BASE64 secret with real values. Set it and re-run the workflow." >&2
+                echo "❌ Template copied to /opt/sia/.env.backend, but production deploys require the BACKEND_ENV_BASE64 secret with real values. Set it and re-run the workflow." >&2
                 exit 1
               else
                 echo "❌ Missing backend env file and no template available. Aborting deploy." >&2
