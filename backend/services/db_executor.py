@@ -267,6 +267,12 @@ async def _parse_and_execute_postgrest(sql: str) -> Optional[List[Dict[str, Any]
     if limit_match:
         limit = int(limit_match.group(1))
 
+    # Extract offset
+    offset = 0
+    offset_match = re.search(r'OFFSET\s+(\d+)', sql_clean, re.IGNORECASE)
+    if offset_match:
+        offset = int(offset_match.group(1))
+
     # Extract order by
     order_params = {}
     order_match = re.search(r'ORDER\s+BY\s+([\w.]+)\s*(ASC|DESC)?', sql_clean, re.IGNORECASE)
@@ -282,7 +288,7 @@ async def _parse_and_execute_postgrest(sql: str) -> Optional[List[Dict[str, Any]
         where_clause = where_match.group(1).strip()
         where_params = _parse_where_clause(where_clause)
 
-    params = {"select": select_cols, "limit": str(limit)}
+    params = {"select": select_cols, "limit": str(limit), "offset": str(offset)}
     params.update(order_params)
     params.update(where_params)
 

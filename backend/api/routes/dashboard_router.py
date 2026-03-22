@@ -16,6 +16,27 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
 
 
+async def _fetch_all_fact_sales(page_size: int = 1000) -> list[dict]:
+    """Fetch all fact_sales rows via pagination to bypass Supabase max rows limit."""
+    all_rows: list[dict] = []
+    offset = 0
+    while True:
+        rows = await execute_safe_query(f"""
+            SELECT sale_id, total_amount, customer_id, product_id, channel
+            FROM public.fact_sales
+            ORDER BY sale_id ASC
+            LIMIT {page_size}
+            OFFSET {offset}
+        """)
+        if not rows:
+            break
+        all_rows.extend(rows)
+        if len(rows) < page_size:
+            break
+        offset += page_size
+    return all_rows
+
+
 @router.get("/data")
 async def get_dashboard_data() -> Dict[str, Any]:
     """
@@ -68,11 +89,7 @@ async def get_dashboard_data() -> Dict[str, Any]:
 
 async def _get_revenue_summary() -> Dict[str, Any]:
     """KPI tổng quan: Tổng doanh thu, số đơn, giá trị trung bình."""
-    data = await execute_safe_query("""
-        SELECT sale_id, total_amount, customer_id, product_id
-        FROM public.fact_sales
-        LIMIT 200000
-    """)
+    data = await _fetch_all_fact_sales()
     # Compute aggregates in Python since PostgREST doesn't support aggregate functions
     total_orders = len(data)
     total_revenue = sum(float(r.get("total_amount", 0)) for r in data)
@@ -181,11 +198,7 @@ async def _get_daily_revenue_trend() -> Dict[str, Any]:
 
 async def _get_channel_distribution() -> Dict[str, Any]:
     """Phân bố doanh thu theo kênh bán hàng - Bar chart."""
-    data = await execute_safe_query("""
-        SELECT channel, total_amount
-        FROM public.fact_sales
-        LIMIT 200000
-    """)
+    data = await _fetch_all_fact_sales()
     # Aggregate by channel in Python since PostgREST doesn't support GROUP BY
     channel_map: Dict[str, Dict] = {}
     for row in data:
