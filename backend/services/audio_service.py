@@ -32,6 +32,38 @@ class AudioServiceError(Exception):
     pass
 
 
+def _map_elevenlabs_error(error_str: str, voice_id: str) -> str:
+    """Map raw ElevenLabs error text to a user-friendly message."""
+    lower_err = error_str.lower()
+
+    # Quota issues can arrive with 401 + status=quota_exceeded, so detect first.
+    if (
+        "quota_exceeded" in lower_err
+        or "credits remaining" in lower_err
+        or "credits are required" in lower_err
+        or "insufficient credits" in lower_err
+    ):
+        return (
+            "ElevenLabs quota exceeded: không đủ credits để tạo audio cho nội dung hiện tại. "
+            "Hãy nạp thêm credits hoặc giảm độ dài bản đọc (bật summarize, giảm summary_words). "
+            f"(Detail: {error_str})"
+        )
+
+    if "rate_limit" in lower_err or "429" in error_str:
+        return f"ElevenLabs rate limit exceeded. Please try again later (Detail: {error_str})"
+
+    if "invalid_voice_id" in lower_err or "voice_id" in lower_err:
+        return f"Invalid voice ID '{voice_id}' (Detail: {error_str})"
+
+    if "connection" in lower_err or "timeout" in lower_err:
+        return f"Connection error with ElevenLabs API (Detail: {error_str})"
+
+    if "authentication" in lower_err or "unauthorized" in lower_err or "401" in error_str:
+        return f"ElevenLabs authentication failed: Invalid or expired API key (Detail: {error_str})"
+
+    return f"ElevenLabs API error: {error_str}"
+
+
 def is_configured() -> bool:
     """Check if ElevenLabs API key is configured."""
     return bool(ELEVENLABS_API_KEY) and ELEVENLABS_AVAILABLE
@@ -133,21 +165,9 @@ async def text_to_speech_bytes(
         return audio_bytes, None
 
     except Exception as e:
-        error_type = type(e).__name__
         error_str = str(e)
-        
-        # Detect specific error types
-        if "authentication" in error_str.lower() or "unauthorized" in error_str.lower() or "401" in error_str:
-            error_msg = f"ElevenLabs authentication failed: Invalid or expired API key (Detail: {error_str})"
-        elif "rate_limit" in error_str.lower() or "429" in error_str:
-            error_msg = f"ElevenLabs rate limit exceeded. Please try again later (Detail: {error_str})"
-        elif "invalid_voice_id" in error_str.lower() or "voice_id" in error_str.lower():
-            error_msg = f"Invalid voice ID '{_voice_id}' (Detail: {error_str})"
-        elif "connection" in error_str.lower() or "timeout" in error_str.lower():
-            error_msg = f"Connection error with ElevenLabs API (Detail: {error_str})"
-        else:
-            error_msg = f"ElevenLabs API error ({error_type}): {error_str}"
-        
+        error_msg = _map_elevenlabs_error(error_str, _voice_id)
+
         logger.error(f"ElevenLabs TTS error: {error_msg}", exc_info=True)
         return None, error_msg
 
