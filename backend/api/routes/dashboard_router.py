@@ -5,6 +5,8 @@ Trả về tất cả dữ liệu cần thiết cho grid biểu đồ trong mộ
 """
 
 import logging
+from collections import defaultdict
+from datetime import datetime
 from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException
@@ -22,7 +24,7 @@ async def _fetch_all_fact_sales(page_size: int = 1000) -> list[dict]:
     offset = 0
     while True:
         rows = await execute_safe_query(f"""
-            SELECT sale_id, total_amount, customer_id, product_id, channel
+            SELECT sale_id, total_amount, customer_id, product_id, channel, order_date, created_at
             FROM public.fact_sales
             ORDER BY sale_id ASC
             LIMIT {page_size}
@@ -106,15 +108,43 @@ async def _get_revenue_summary() -> Dict[str, Any]:
 
 
 async def _get_monthly_revenue() -> Dict[str, Any]:
-    """Doanh thu theo tháng - Line chart."""
-    data = await execute_safe_query("""
-        SELECT month, total_orders, total_revenue, avg_order_value
-        FROM public.v_monthly_revenue
-        ORDER BY month ASC
-    """)
+    """Doanh thu theo tháng - Line chart (based on ingestion timeline)."""
+    rows = await _fetch_all_fact_sales()
+    month_map: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
+        "month": "",
+        "total_orders": 0,
+        "total_revenue": 0.0,
+    })
+
+    for row in rows:
+        created = row.get("created_at")
+        order_date = row.get("order_date")
+        dt = None
+        if created:
+            try:
+                dt = datetime.fromisoformat(str(created).replace("Z", "+00:00"))
+            except Exception:
+                dt = None
+        if dt is None and order_date:
+            try:
+                dt = datetime.fromisoformat(str(order_date))
+            except Exception:
+                continue
+
+        month_key = dt.strftime("%Y-%m-01")
+        bucket = month_map[month_key]
+        bucket["month"] = month_key
+        bucket["total_orders"] += 1
+        bucket["total_revenue"] += float(row.get("total_amount", 0) or 0)
+
+    data = sorted(month_map.values(), key=lambda x: x["month"])
+    for item in data:
+        orders = item["total_orders"]
+        item["avg_order_value"] = item["total_revenue"] / orders if orders else 0
+
     return {
         "chart_type": "line",
-        "title": "Doanh thu theo tháng",
+        "title": "Doanh thu theo tháng (timeline cập nhật)",
         "config": {
             "xAxis": {"dataKey": "month", "label": "Tháng"},
             "series": [
@@ -174,18 +204,41 @@ async def _get_customer_segments() -> Dict[str, Any]:
 
 
 async def _get_daily_revenue_trend() -> Dict[str, Any]:
-    """Doanh thu 30 ngày gần nhất - Area chart."""
-    data = await execute_safe_query("""
-        SELECT order_date, total_orders, total_revenue
-        FROM public.v_daily_revenue
-        ORDER BY order_date DESC
-        LIMIT 30
-    """)
-    # Reverse to show chronological order
-    data.reverse()
+    """Doanh thu 30 ngày gần nhất - Area chart (based on ingestion timeline)."""
+    rows = await _fetch_all_fact_sales()
+    day_map: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
+        "order_date": "",
+        "total_orders": 0,
+        "total_revenue": 0.0,
+    })
+
+    for row in rows:
+        created = row.get("created_at")
+        order_date = row.get("order_date")
+        dt = None
+        if created:
+            try:
+                dt = datetime.fromisoformat(str(created).replace("Z", "+00:00"))
+            except Exception:
+                dt = None
+        if dt is None and order_date:
+            try:
+                dt = datetime.fromisoformat(str(order_date))
+            except Exception:
+                continue
+
+        day_key = dt.strftime("%Y-%m-%d")
+        bucket = day_map[day_key]
+        bucket["order_date"] = day_key
+        bucket["total_orders"] += 1
+        bucket["total_revenue"] += float(row.get("total_amount", 0) or 0)
+
+    data = sorted(day_map.values(), key=lambda x: x["order_date"])
+    data = data[-30:]
+
     return {
         "chart_type": "area",
-        "title": "Doanh thu 30 ngày gần nhất",
+        "title": "Doanh thu 30 ngày gần nhất (timeline cập nhật)",
         "config": {
             "xAxis": {"dataKey": "order_date", "label": "Ngày"},
             "series": [
