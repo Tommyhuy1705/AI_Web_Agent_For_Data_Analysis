@@ -29,6 +29,7 @@ _api_key = SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY
 
 # asyncpg fallback
 SUPABASE_DATABASE_URL = os.getenv("SUPABASE_DATABASE_URL", "")
+POSTGREST_DEFAULT_LIMIT = int(os.getenv("POSTGREST_DEFAULT_LIMIT", "20000"))
 
 # Global asyncpg pool (if available)
 _pool = None
@@ -261,7 +262,7 @@ async def _parse_and_execute_postgrest(sql: str) -> Optional[List[Dict[str, Any]
             select_cols = cols
 
     # Extract limit
-    limit = 1000
+    limit = POSTGREST_DEFAULT_LIMIT
     limit_match = re.search(r'LIMIT\s+(\d+)', sql_clean, re.IGNORECASE)
     if limit_match:
         limit = int(limit_match.group(1))
