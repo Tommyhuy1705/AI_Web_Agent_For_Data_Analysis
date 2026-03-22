@@ -70,7 +70,7 @@ async def _get_revenue_summary() -> Dict[str, Any]:
     """KPI tổng quan: Tổng doanh thu, số đơn, giá trị trung bình."""
     data = await execute_safe_query("""
         SELECT sale_id, total_amount, customer_id, product_id
-        FROM fact_sales
+        FROM public.fact_sales
     """)
     # Compute aggregates in Python since PostgREST doesn't support aggregate functions
     total_orders = len(data)
@@ -91,7 +91,7 @@ async def _get_monthly_revenue() -> Dict[str, Any]:
     """Doanh thu theo tháng - Line chart."""
     data = await execute_safe_query("""
         SELECT month, total_orders, total_revenue, avg_order_value
-        FROM v_monthly_revenue
+        FROM public.v_monthly_revenue
         ORDER BY month ASC
     """)
     return {
@@ -111,7 +111,7 @@ async def _get_top_products() -> Dict[str, Any]:
     """Top 10 sản phẩm bán chạy - Bar chart."""
     data = await execute_safe_query("""
         SELECT product_name, category, total_orders, total_revenue
-        FROM v_product_performance
+        FROM public.v_product_performance
         ORDER BY total_revenue DESC
         LIMIT 10
     """)
@@ -132,7 +132,7 @@ async def _get_customer_segments() -> Dict[str, Any]:
     """Phân bố doanh thu theo phân khúc khách hàng - Pie chart."""
     data = await execute_safe_query("""
         SELECT segment, total_customers, total_orders, total_revenue
-        FROM v_customer_segment_revenue
+        FROM public.v_customer_segment_revenue
         ORDER BY total_revenue DESC
     """)
     # Aggregate by segment in Python since PostgREST doesn't support GROUP BY
@@ -159,7 +159,7 @@ async def _get_daily_revenue_trend() -> Dict[str, Any]:
     """Doanh thu 30 ngày gần nhất - Area chart."""
     data = await execute_safe_query("""
         SELECT order_date, total_orders, total_revenue
-        FROM v_daily_revenue
+        FROM public.v_daily_revenue
         ORDER BY order_date DESC
         LIMIT 30
     """)
@@ -182,7 +182,7 @@ async def _get_channel_distribution() -> Dict[str, Any]:
     """Phân bố doanh thu theo kênh bán hàng - Bar chart."""
     data = await execute_safe_query("""
         SELECT channel, total_amount
-        FROM fact_sales
+        FROM public.fact_sales
     """)
     # Aggregate by channel in Python since PostgREST doesn't support GROUP BY
     channel_map: Dict[str, Dict] = {}
@@ -212,7 +212,7 @@ async def _get_competitor_overview() -> Dict[str, Any]:
     try:
         data = await execute_safe_query("""
             SELECT source, keyword, product_name, price, discount_pct, sold_count, rating
-            FROM competitor_prices
+            FROM public.competitor_prices
             ORDER BY crawled_at DESC
             LIMIT 20
         """)
