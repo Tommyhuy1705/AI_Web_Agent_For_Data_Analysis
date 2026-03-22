@@ -170,15 +170,8 @@ async def create_audio_briefing(request: BriefingRequest):
 
         if audio_error:
             logger.error(f"Audio generation failed: {audio_error}")
-            error_lower = audio_error.lower()
-            status_code = 500
-            if "quota exceeded" in error_lower or "quota_exceeded" in error_lower or "insufficient credits" in error_lower:
-                status_code = 402
-            elif "rate limit" in error_lower:
-                status_code = 429
-
             raise HTTPException(
-                status_code=status_code,
+                status_code=500,
                 detail=f"Không thể tạo audio. {audio_error}",
             )
 
