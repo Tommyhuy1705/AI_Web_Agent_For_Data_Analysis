@@ -71,6 +71,7 @@ async def _get_revenue_summary() -> Dict[str, Any]:
     data = await execute_safe_query("""
         SELECT sale_id, total_amount, customer_id, product_id
         FROM public.fact_sales
+        LIMIT 200000
     """)
     # Compute aggregates in Python since PostgREST doesn't support aggregate functions
     total_orders = len(data)
@@ -183,6 +184,7 @@ async def _get_channel_distribution() -> Dict[str, Any]:
     data = await execute_safe_query("""
         SELECT channel, total_amount
         FROM public.fact_sales
+        LIMIT 200000
     """)
     # Aggregate by channel in Python since PostgREST doesn't support GROUP BY
     channel_map: Dict[str, Dict] = {}
