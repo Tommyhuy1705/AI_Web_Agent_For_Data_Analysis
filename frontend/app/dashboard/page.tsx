@@ -170,6 +170,26 @@ function ChartCard({
   const series = config?.series || [];
   const xAxisKey = config?.xAxis?.dataKey || (data[0] ? Object.keys(data[0])[0] : "");
 
+  const revenueSeriesKey = series?.[0]?.dataKey;
+  const revenueValues = revenueSeriesKey
+    ? data
+        .map((d: any) => Number(d?.[revenueSeriesKey] ?? 0))
+        .filter((v: number) => Number.isFinite(v) && v >= 0)
+    : [];
+  const maxRevenue = revenueValues.length ? Math.max(...revenueValues) : 0;
+  const minPositiveRevenue = revenueValues.length
+    ? Math.min(...revenueValues.filter((v: number) => v > 0))
+    : 0;
+  const isRevenueTrendChart =
+    title.toLowerCase().includes("doanh thu") &&
+    (chart_type === "line" || chart_type === "area");
+  // If one point is much larger than the rest, use sqrt scale so changes remain visible.
+  const useAdaptiveSqrtScale =
+    isRevenueTrendChart &&
+    maxRevenue > 0 &&
+    minPositiveRevenue > 0 &&
+    maxRevenue / minPositiveRevenue >= 100;
+
   const renderChart = () => {
     switch (chart_type) {
       case "line":
@@ -178,7 +198,11 @@ function ChartCard({
             <LineChart data={data} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
               <XAxis dataKey={xAxisKey} tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} tickFormatter={formatNumber} />
+              <YAxis
+                tick={{ fontSize: 10 }}
+                tickFormatter={formatNumber}
+                scale={useAdaptiveSqrtScale ? "sqrt" : "auto"}
+              />
               <Tooltip content={<CustomTooltip />} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               {series.map((s: any, i: number) => (
@@ -203,7 +227,11 @@ function ChartCard({
             <BarChart data={data} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
               <XAxis dataKey={xAxisKey} tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} tickFormatter={formatNumber} />
+              <YAxis
+                tick={{ fontSize: 10 }}
+                tickFormatter={formatNumber}
+                scale={useAdaptiveSqrtScale ? "sqrt" : "auto"}
+              />
               <Tooltip content={<CustomTooltip />} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               {series.map((s: any, i: number) => (
