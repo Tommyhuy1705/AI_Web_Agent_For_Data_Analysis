@@ -83,10 +83,15 @@ async def _build_english_audio_script(text: str, target_words: int) -> str:
 @router.get("/status")
 async def audio_status():
     """Kiểm tra trạng thái ElevenLabs configuration."""
+    from backend.services.audio_service import _validate_api_key
+    
+    is_valid, error_msg = _validate_api_key()
     return {
-        "configured": is_configured(),
+        "configured": is_valid,
         "service": "ElevenLabs TTS",
         "purpose": "Convert AI insights to MP3 audio briefings",
+        "status": "ready" if is_valid else "error",
+        "error": error_msg if not is_valid else None,
     }
 
 
@@ -102,9 +107,11 @@ async def create_audio_briefing(request: BriefingRequest):
     Frontend dùng thẻ <audio> ẩn để play() ngay lập tức.
     """
     if not is_configured():
+        error_msg = "ElevenLabs chưa được cấu hình. Vui lòng thêm ELEVENLABS_API_KEY vào .env"
+        logger.error(error_msg)
         raise HTTPException(
             status_code=503,
-            detail="ElevenLabs chưa được cấu hình. Vui lòng thêm ELEVENLABS_API_KEY vào .env.",
+            detail=error_msg,
         )
 
     logger.info(
@@ -121,12 +128,28 @@ async def create_audio_briefing(request: BriefingRequest):
 
     if request.stream:
         # Streaming response (chunk by chunk)
+        audio_stream, stream_error = await text_to_speech_stream(
+            text=script_text,
+            voice_id=request.voice_id,
+            model_id=request.model_id,
+        )
+        
+        if stream_error:
+            logger.error(f"Audio stream initialization failed: {stream_error}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Không thể tạo audio. {stream_error}",
+            )
+        
+        if audio_stream is None:
+            logger.error("Audio stream generator is None")
+            raise HTTPException(
+                status_code=500,
+                detail="Không thể tạo audio stream. Vui lòng kiểm tra cấu hình ElevenLabs.",
+            )
+        
         async def audio_stream_generator():
-            async for chunk in text_to_speech_stream(
-                text=script_text,
-                voice_id=request.voice_id,
-                model_id=request.model_id,
-            ):
+            async for chunk in audio_stream:
                 yield chunk
 
         return StreamingResponse(
@@ -139,17 +162,24 @@ async def create_audio_briefing(request: BriefingRequest):
         )
     else:
         # Full response (toàn bộ file MP3)
-        audio_bytes = await text_to_speech_bytes(
+        audio_bytes, audio_error = await text_to_speech_bytes(
             text=script_text,
             voice_id=request.voice_id,
             model_id=request.model_id,
         )
 
-        if not audio_bytes:
-            logger.error(f"Failed to generate audio bytes for text: {request.text[:100]}")
+        if audio_error:
+            logger.error(f"Audio generation failed: {audio_error}")
             raise HTTPException(
                 status_code=500,
-                detail="Không thể tạo audio. ElevenLabs API có thể bị lỗi hoặc API key không hợp lệ. Kiểm tra logs backend để biết chi tiết.",
+                detail=f"Không thể tạo audio. {audio_error}",
+            )
+
+        if not audio_bytes:
+            logger.error(f"Audio generation returned empty bytes for text: {request.text[:100]}")
+            raise HTTPException(
+                status_code=500,
+                detail="Không thể tạo audio. ElevenLabs API trả về dữ liệu trống.",
             )
 
         return Response(
@@ -172,7 +202,15 @@ async def list_voices():
             detail="ElevenLabs chưa được cấu hình.",
         )
 
-    voices = get_available_voices()
+    voices, error_msg = get_available_voices()
+    
+    if error_msg:
+        logger.error(f"Failed to fetch voices: {error_msg}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Không thể lấy danh sách giọng đọc. {error_msg}",
+        )
+    
     return {
         "voices": voices,
         "count": len(voices),
