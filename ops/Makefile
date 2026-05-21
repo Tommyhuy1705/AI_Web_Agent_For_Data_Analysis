@@ -76,10 +76,10 @@ seed:
 
 migrate:
 	@echo "Applying migrations..."
-	@echo "Run: psql \$$SUPABASE_DATABASE_URL -f database/migrations/001_initial_schema.sql"
-	@echo "Run: psql \$$SUPABASE_DATABASE_URL -f database/migrations/002_public_schema.sql"
+	@echo "Run: psql $$SUPABASE_DATABASE_URL -f database/migrations/001_initial_schema.sql"
+	@echo "Run: psql $$SUPABASE_DATABASE_URL -f database/migrations/002_public_schema.sql"
 
-# ── Production (AWS) ─────────────────────────────────────────
+# ── Production (AWS) ─────────────────────────────────--------
 
 pull:
 	git pull origin main
@@ -94,7 +94,7 @@ deploy:
 	docker image prune -f
 	@echo "✓ Deployment complete."
 
-# ── Cleanup ──────────────────────────────────────────────────
+# ── Cleanup ─────────────────────────────────────────────────-
 
 clean:
 	docker compose down -v --remove-orphans

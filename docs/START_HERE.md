@@ -83,9 +83,6 @@ cd frontend; npm run dev
 
 Then open: http://localhost:3000
 
-### Stop Everything
-Press `Ctrl+C` in both terminals
-
 ---
 
 ## ✨ YOUR SYSTEM IS READY!
@@ -164,4 +161,3 @@ Your AI Web Agent for Data Analysis is now:
 - **Ready to use** 🚀
 
 Start asking questions about your business data!
-

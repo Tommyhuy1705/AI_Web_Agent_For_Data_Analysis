@@ -260,6 +260,17 @@ sia/
 └── .gitignore
 ```
 
+**Repository layout updates**
+
+- `docs/` - project documentation and guides (moved from repo root)
+- `ops/` - operational scripts and deployment helpers (Makefile, compose files, env generators)
+- `tools/` - developer utilities and quick scripts
+- `testdata/` - sample JSON test payloads
+- `archive/` - legacy UI/components and old code
+- `misc/` - miscellaneous static files (errors, small assets)
+
+Security: sensitive files (e.g. `.env`, `BACKEND_ENV_BASE64.txt`, `*.pem`) are intentionally gitignored. Do NOT commit secrets; use GitHub Secrets for CI/CD (`BACKEND_ENV_BASE64`).
+
 ## 5 Core Tasks
 
 ### Task 1: On-Demand Query and Dashboard

@@ -50,3 +50,14 @@ htmlcov/
 # Misc
 *.egg-info/
 .eggs/
+
+# Sensitive files (do NOT commit secrets)
+BACKEND_ENV_BASE64.txt
+env.base64.txt
+ops/BACKEND_ENV_BASE64.txt
+ops/env.base64.txt
+*.pem
+*.key
+*.ppk
+*.crt
+*.cert

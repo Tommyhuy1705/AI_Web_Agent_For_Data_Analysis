@@ -173,13 +173,6 @@ pip install elevenlabs
 python backend/main.py
 ```
 
-### Issue: "Connection error"
-**Cause:** Network issue or ElevenLabs API down
-**Solution:**
-1. Check internet connection
-2. Check if ElevenLabs API is up (https://status.elevenlabs.io/)
-3. Try again in a few moments
-
 ## Testing the Fix
 
 Run the test suite to verify all error handling works:

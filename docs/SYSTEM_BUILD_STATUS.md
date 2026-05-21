@@ -1,6 +1,6 @@
 # 🚀 System Build Status Report
 **Date:** March 22, 2026  
-**Status:** ⚠️ PARTIALLY OPERATIONAL  
+**Status:** ⚠️ PARTIALLY OPERATIONAL
 
 ---
 
@@ -105,7 +105,7 @@ wsl --install
 
 ### 1. Access the System
 **Frontend:** http://localhost:3000  
-**API Docs:** http://localhost:8000/docs  
+**API Docs:** http://localhost:8000/docs
 
 ### 2. Test Chat
 Open frontend and type any market-related question:
@@ -116,7 +116,7 @@ Open frontend and type any market-related question:
 ### 3. Load Sample Data (Optional)
 ```bash
 .venv\Scripts\python.exe scripts/import_fact_sales_csv.py
-# Then refresh dashboard to see charts
+# Then refresh frontend to see charts
 ```
 
 ---

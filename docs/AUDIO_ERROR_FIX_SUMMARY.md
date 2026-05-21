@@ -158,7 +158,7 @@ Response will be either:
 2. Try again
 
 ### For any other error
-1. Run: `.venv\Scripts\python diagnose_audio.py`
+1. Run diagnosis: `.venv\Scripts\python diagnose_audio.py`
 2. Check backend logs for specific error details
 3. Refer to `AUDIO_FIX_GUIDE.md` for troubleshooting
 

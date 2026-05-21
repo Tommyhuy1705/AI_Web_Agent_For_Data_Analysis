@@ -144,7 +144,7 @@ Get-Content logs/backend.log | Select-String "ElevenLabs" | Tail -10
 ```
 
 ### Check if package is installed
-```powershell
+```bash
 python -c "import elevenlabs; print(elevenlabs.__version__)"
 ```
 
