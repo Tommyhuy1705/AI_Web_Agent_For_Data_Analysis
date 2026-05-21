@@ -1,4 +1,4 @@
-# SIA - Sales Intelligence Agent
+# Janus BI – Multi-Agent Business Intelligence PLatform
 
 **AI Web Agent for Enterprise Data Analysis** - An intelligent revenue analytics platform that combines Generative UI, Agentic Workflow, and a Zero Data Lake Architecture.
 
